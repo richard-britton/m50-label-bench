@@ -1,0 +1,55 @@
+# Home Assistant package for M50 Label Bench: a "Print label" script you can use from
+# dashboards and automations.
+# Copy to config/packages/label_printer.yaml and add these to secrets.yaml:
+#   label_bridge_print_url: http://BRIDGE_HOST:8091/api/print   (your LABEL_BRIDGE_PORT)
+#   label_bridge_token: the same value as LABEL_BRIDGE_TOKEN in the bridge's .env
+
+rest_command:
+  label_printer_print:
+    url: !secret label_bridge_print_url
+    method: post
+    headers:
+      X-Label-Token: !secret label_bridge_token
+    content_type: "application/json"
+    payload: >-
+      {{ {"text": text, "copies": (copies | default(1) | int), "length_mm": (length_mm | default(30) | int)} | to_json }}
+    timeout: 150   # a printer at the edge of range can take a minute to connect
+
+script:
+  print_label:
+    alias: Print label
+    icon: mdi:label-outline
+    description: Prints a text label on the Kodak M50 through the label bridge. Emoji work. The printer must be switched on.
+    fields:
+      text:
+        name: Text
+        description: Use a new line for a second line.
+        required: true
+        example: "Soup 🍲\nmade 11 Oct"
+        selector:
+          text:
+            multiline: true
+      copies:
+        name: Copies
+        default: 1
+        selector:
+          number:
+            min: 1
+            max: 10
+            mode: box
+    sequence:
+      - action: rest_command.label_printer_print
+        data:
+          text: "{{ text }}"
+          copies: "{{ copies | default(1) }}"
+        response_variable: result
+        continue_on_error: true
+      - if:
+          - condition: template
+            value_template: "{{ result is not defined or result.status != 200 }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: Label printer
+              message: >-
+                {% if result is defined and result.content is mapping and result.content.error is defined %}{{ result.content.error }}{% else %}The label bridge did not answer. Check that the label-bridge container is running.{% endif %}

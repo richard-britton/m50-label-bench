@@ -1,0 +1,33 @@
+# Traefik (file provider): serves the designer at labels.example.com behind your login and adds
+# the bridge's access token on the way through, so the browser never needs it.
+#
+# 1. Put this file in Traefik's dynamic configuration folder.
+# 2. Give the Traefik container LABEL_BRIDGE_TOKEN in its environment (the same value as the bridge's .env).
+# 3. Replace the host name, the login middleware, the certificate resolver and the bridge address.
+#
+# Keep a login middleware (Authelia, Authentik, basic auth...): the token is added for everyone
+# who reaches this address.
+http:
+  routers:
+    labels:
+      rule: 'Host(`labels.example.com`)'
+      entryPoints:
+        - websecure
+      middlewares:
+        - my-login@docker
+        - labels-token
+      service: labels
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    labels-token:
+      headers:
+        customRequestHeaders:
+          X-Label-Token: '{{ env "LABEL_BRIDGE_TOKEN" }}'
+
+  services:
+    labels:
+      loadBalancer:
+        servers:
+          - url: "http://192.168.1.10:8091"

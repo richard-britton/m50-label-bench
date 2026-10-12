@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dbus python3-dbus python3-gi python3-pil python3-fonttools python3-venv fonts-dejavu-core
+
+      - name: Bridge over D-Bus, against a mock bluetoothd
+        env:
+          MOCK_PYTHON: /usr/bin/python3
+        run: /usr/bin/python3 tests/test_bluez.py
+
+      - name: Designer page in headless Chromium
+        run: |
+          /usr/bin/python3 -m venv --system-site-packages .venv
+          .venv/bin/pip install playwright
+          .venv/bin/playwright install --with-deps chromium
+          .venv/bin/python tests/test_page.py

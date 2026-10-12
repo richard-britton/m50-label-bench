@@ -1,0 +1,27 @@
+# M50 Label Bench: the bridge (print server).
+# Pair the printer with this machine first (README, "Pairing"), copy .env.example to .env, then:
+#   docker compose up -d --build
+services:
+  label-bridge:
+    build: .
+    # image: ghcr.io/richard-britton/m50-label-bench:latest   # or use a published image instead of building
+    container_name: label-bridge
+    restart: unless-stopped
+    ports:
+      - "${LABEL_BRIDGE_PORT:-8091}:8091"
+    volumes:
+      - ./data:/data              # saved labels, shared by everyone who uses the page
+      - /run/dbus:/run/dbus:ro    # the host's bluetoothd opens the printer connection and passes it over D-Bus
+    cap_drop:
+      - ALL                       # the bridge needs no special powers...
+    cap_add:
+      - DAC_OVERRIDE              # ...except reading and writing its own files whatever their permissions
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:unconfined       # Ubuntu's default Docker AppArmor profile blocks D-Bus (see the README)
+    environment:
+      PRINTER_MAC: "${PRINTER_MAC:-}"        # blank: use the paired printer named "Kodak Label_…"
+      API_TOKEN: "${LABEL_BRIDGE_TOKEN:-}"   # blank: no token (only on a network you trust)
+      DEFAULT_LENGTH_MM: "30"                # label length for plain text printed through the API
+      OFFSET_MM: "0"                         # shift along the label, if prints sit off-centre
+      TZ: "${TZ:-Etc/UTC}"

@@ -1,0 +1,1935 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2b600">
+<title>M50 Label Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Bebas+Neue&family=Caveat:wght@600&family=Fredoka:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Emoji:wght@400..700&family=Noto+Serif:wght@600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+/* Layout: the label itself is the workspace. A sticky "tape" stage holds the live, editable label at printhead
+   resolution with the add-tools beneath it; tabs below hold the item inspector, saved labels and printer setup.
+   Identity: printer-yellow used only for the print action and selection-adjacent highlights; everything else quiet. */
+:root{
+  --bg:#e6e8eb; --panel:#f7f8f9; --sunk:#eceef1; --ink:#14161a; --muted:#59606a; --line:#cbd0d6;
+  --accent:#f2b600; --accent-ink:#1b1600;
+  --paper:#fdfdfb; --dot:#141414; --backing:#d2d6db; --cut:#9aa1aa; --sel:#2b67d1;
+  --ok:#1d7544; --warn:#9a5c00; --bad:#b0281f; --focus:#2b67d1;
+  --f-display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--bg:#101214;--panel:#191c1f;--sunk:#14171a;--ink:#e6e8eb;--muted:#9aa2ac;--line:#2c3237;--accent:#f5c22e;--accent-ink:#1b1600;--paper:#efefea;--dot:#121212;--backing:#262a2f;--cut:#5b636c;--sel:#7aa7ff;--ok:#4cc38a;--warn:#e7a541;--bad:#f07a70;--focus:#7aa7ff;color-scheme:dark}
+}
+:root[data-theme="dark"]{--bg:#101214;--panel:#191c1f;--sunk:#14171a;--ink:#e6e8eb;--muted:#9aa2ac;--line:#2c3237;--accent:#f5c22e;--accent-ink:#1b1600;--paper:#efefea;--dot:#121212;--backing:#262a2f;--cut:#5b636c;--sel:#7aa7ff;--ok:#4cc38a;--warn:#e7a541;--bad:#f07a70;--focus:#7aa7ff;color-scheme:dark}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body)}
+[hidden]{display:none!important}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:0 56px}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.mono{font-family:var(--f-mono)}
+
+header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-block:16px 10px}
+.brand{font-family:var(--f-display);font-stretch:120%;font-weight:850;font-size:21px;letter-spacing:.03em;text-transform:uppercase;line-height:1.1;margin:0}
+.pill{display:inline-flex;align-items:center;gap:8px;font:500 13px/1.2 var(--f-body);padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted);max-width:100%;cursor:pointer}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--cut);flex:none}
+.pill[data-state="on"]{color:var(--ink)} .pill[data-state="on"] i{background:var(--ok)}
+.pill[data-state="busy"]{color:var(--ink)} .pill[data-state="busy"] i{background:var(--accent)}
+.pill[data-state="warn"]{color:var(--ink)} .pill[data-state="warn"] i{background:var(--warn)}
+.pill span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* stage */
+.stage{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:2px 10px;border-bottom:1px solid var(--line)}
+.tape{background:var(--backing);border-radius:var(--r);padding:38px 28px 22px;display:flex;justify-content:center;align-items:center;position:relative;min-height:120px;transition:outline-color .15s}
+.tape::before,.tape::after{content:"";position:absolute;top:12px;bottom:12px;border-left:1px dashed var(--cut)}
+.tape::before{left:12px} .tape::after{right:12px}
+.dropping .tape{outline:2px dashed var(--accent);outline-offset:-7px}
+.labelwrap{position:relative;display:inline-block;line-height:0;max-width:100%}
+#pv{display:block;max-width:100%;height:auto;border-radius:7px;image-rendering:crisp-edges;image-rendering:pixelated;box-shadow:0 1px 0 rgba(0,0,0,.14),0 8px 18px -10px rgba(0,0,0,.45)}
+#overlay{position:absolute;inset:0;touch-action:none;outline:none;border-radius:7px;cursor:default}
+#overlay:focus-visible{outline:2px solid var(--focus);outline-offset:5px}
+#overlay.over-item{cursor:move}
+.selbox{position:absolute;border:1.5px dashed var(--sel);border-radius:2px;pointer-events:none}
+.selbox .h{position:absolute;width:24px;height:24px;border-radius:50%;background:var(--panel);border:2px solid var(--sel);pointer-events:auto;touch-action:none;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.h-size{right:-13px;bottom:-13px;cursor:nwse-resize}
+.h-rot{left:50%;top:-36px;margin-left:-12px;cursor:grab}
+.h-rot::after{content:"";position:absolute;left:50%;top:22px;width:2px;height:12px;margin-left:-1px;background:var(--sel)}
+.guide{position:absolute;background:var(--accent);pointer-events:none;opacity:.95}
+.guide.v{top:-8px;bottom:-8px;width:2px;margin-left:-1px}
+.guide.h{left:-8px;right:-8px;height:2px;margin-top:-1px}
+.empty-hint{position:absolute;inset:0;display:grid;place-items:center;font:500 14px/1.3 var(--f-body);color:#6b7179;pointer-events:none;line-height:1.3;text-align:center;padding:8px}
+
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:6px 10px;margin-top:10px;flex-wrap:wrap}
+.tools{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1 1 auto}
+.tools::-webkit-scrollbar{display:none}
+.tool{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:54px;min-height:50px;padding:5px 7px;border:1px solid transparent;border-radius:10px;background:none;color:var(--ink);font:600 11.5px/1 var(--f-body);cursor:pointer;flex:none}
+.tool svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tool:hover{background:var(--panel);border-color:var(--line)}
+.tool[aria-pressed="true"]{background:var(--panel);border-color:var(--ink)}
+.tool:disabled{opacity:.35;cursor:default;background:none;border-color:transparent}
+.tool.icon{min-width:42px}
+.sep{width:1px;background:var(--line);margin:8px 3px;flex:none}
+.printbar{display:flex;gap:8px;align-items:center;margin-left:auto}
+.copies{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.copies input{width:58px}
+.stage-foot{display:flex;justify-content:space-between;gap:4px 12px;flex-wrap:wrap;margin-top:6px;font-size:12.5px;color:var(--muted)}
+.dims{font-variant-numeric:tabular-nums}
+
+.btn{font:600 14px/1 var(--f-body);padding:10px 14px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;min-height:40px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);min-width:96px}
+.btn.primary:hover{filter:brightness(.96)}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.small{min-height:34px;padding:7px 11px;font-size:13px}
+
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0;width:100%}
+input[type="range"]{padding:0;border:0;background:transparent;accent-color:var(--ink)}
+input[type="checkbox"]{width:auto;accent-color:var(--ink)}
+textarea{min-height:76px;resize:vertical;font-size:16px;line-height:1.4}
+input.mono,textarea.mono{font:13px/1.4 var(--f-mono)}
+
+.tabs{display:flex;gap:2px;margin-block:14px 14px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{font:750 14px/1 var(--f-display);font-stretch:112%;letter-spacing:.01em;padding:13px 14px 11px;border:0;background:none;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px;align-items:start}
+.stack{display:grid;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:14px;align-content:start;min-width:0}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2{font:780 16px/1.2 var(--f-display);font-stretch:112%;margin:0}
+.card h3{font:600 14px/1.3 var(--f-body);margin:0}
+.field{display:grid;gap:6px;min-width:0}
+.lab{font:600 13px/1.3 var(--f-body);color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.note{font-size:13px;color:var(--muted);margin:0}
+.note code,.how code{font:12.5px var(--f-mono);background:var(--sunk);padding:1px 4px;border-radius:4px;word-break:break-all}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.seg{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
+.seg label{flex:1 1 auto;position:relative}
+.seg label+label{border-left:1px solid var(--line)}
+.seg input{position:absolute;opacity:0;width:1px;height:1px}
+.seg span{display:block;padding:8px 10px;text-align:center;cursor:pointer;font-size:13.5px;white-space:nowrap}
+.seg input:checked+span{background:var(--ink);color:var(--panel);font-weight:600}
+.seg input:focus-visible+span{outline:2px solid var(--focus);outline-offset:-3px}
+.tog{display:inline-flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+
+.palette-group{display:grid;gap:6px}
+.palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:4px}
+.palette button{font:24px/1 "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;height:46px;border-radius:9px;border:1px solid var(--line);background:var(--sunk);cursor:grab;padding:0}
+.palette button:hover{border-color:var(--muted)}
+.shapes{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px}
+.shapes button{display:grid;justify-items:center;gap:6px;padding:10px 6px;border-radius:9px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:500 13px/1.2 var(--f-body);cursor:grab}
+.shapes svg{width:44px;height:26px;fill:none;stroke:currentColor;stroke-width:2.2}
+.drag-ghost{position:fixed;left:0;top:0;pointer-events:none;z-index:60;font:34px/1 "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;transform:translate(-50%,-50%);filter:drop-shadow(0 3px 6px rgba(0,0,0,.35))}
+
+.templates{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.templates button{text-align:left;display:grid;gap:3px;padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);cursor:pointer;font:600 13.5px/1.25 var(--f-body)}
+.templates button small{font-weight:400;color:var(--muted);font-size:12px}
+.templates button:hover{border-color:var(--muted)}
+
+.msg{margin:0;font-size:13.5px;padding:8px 10px;border-radius:8px;background:var(--sunk);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.msg::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted);transform:translateY(-1px)}
+.msg[data-tone="ok"]::before{background:var(--ok)}
+.msg[data-tone="warn"]::before{background:var(--warn)}
+.msg[data-tone="bad"]::before{background:var(--bad)}
+.msg .txt{flex:1 1 200px}
+.stage .msg{margin-top:8px}
+
+dl.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0;font-size:13.5px}
+dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;word-break:break-word}
+
+.saved-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:12px}
+.saved-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:grid;gap:10px;align-content:start}
+.saved-card .thumb{background:var(--backing);border-radius:8px;padding:10px;display:grid;place-items:center;cursor:pointer;border:0}
+.saved-card img{display:block;width:100%;image-rendering:pixelated;border-radius:4px;background:var(--paper)}
+.saved-card .name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.saved-card .when{font-size:12.5px;color:var(--muted)}
+.empty{padding:28px 16px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:var(--r)}
+
+.log{font:12px/1.5 var(--f-mono);background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:10px;height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.log .rx{color:var(--ok)} .log .info{color:var(--muted)} .log .err{color:var(--bad)}
+.log.tall{height:300px}
+.drop{display:grid;place-items:center;gap:6px;text-align:center;border:1.5px dashed var(--cut);border-radius:var(--r);padding:18px 14px;background:var(--sunk);cursor:pointer}
+.drop input{width:auto;max-width:100%;border:0;background:none;padding:0;font-size:13px}
+.how ol{margin:0;padding-left:20px;display:grid;gap:4px;font-size:13.5px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font:12.5px/1.4 var(--f-mono);font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font:600 12px/1.2 var(--f-body);color:var(--muted)}
+td.num,th.num{text-align:right}
+tbody tr{cursor:pointer}
+tbody tr:hover td,tbody tr.sel td{background:var(--sunk)}
+tbody tr.sel td{font-weight:600}
+.bmp{max-height:400px;overflow:auto;background:var(--paper);border-radius:9px;border:1px solid var(--line);padding:8px}
+#bfCanvas{display:block;image-rendering:crisp-edges;image-rendering:pixelated;max-width:100%}
+ul.facts{margin:0;padding-left:18px;font-size:13.5px;display:grid;gap:3px}
+details.more>summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--muted);padding-block:4px}
+details.more[open]>summary{margin-bottom:12px}
+
+dialog{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);color:var(--ink);padding:16px;width:min(92vw,720px)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog .row{justify-content:flex-end}
+#imgOut{display:block;width:100%;image-rendering:pixelated;background:var(--paper);border-radius:6px;margin-block:10px}
+#copyText{height:240px}
+.foot{margin-top:28px;font-size:12.5px;color:var(--muted)}
+@media (max-width:560px){ .tool{min-width:46px;padding:4px 3px} .tape{padding:34px 16px 16px} #hint{display:none} .printbar{width:100%;justify-content:flex-end} }
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">M50 Label Bench</h1>
+    <button class="pill" id="pill" data-state="off" type="button" title="Printer settings"><i></i><span id="pillText">Looking for the printer…</span></button>
+  </header>
+
+  <section class="stage" aria-label="Label editor">
+    <div class="tape" id="tape">
+      <div class="labelwrap" id="labelWrap">
+        <canvas id="pv" width="240" height="112" aria-hidden="true"></canvas>
+        <div id="overlay" tabindex="0" role="application" aria-label="Label. Drag items to move them, use the corner handle to resize and the top handle to rotate. Arrow keys nudge the selected item.">
+          <div class="empty-hint" id="emptyHint" hidden>Add text, emoji, an image or a QR code from the toolbar</div>
+          <div class="guide v" id="guideV" hidden></div>
+          <div class="guide h" id="guideH" hidden></div>
+          <div class="selbox" id="selBox" hidden><span class="h h-rot" data-h="rot" title="Rotate"></span><span class="h h-size" data-h="size" title="Resize"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="tools" role="toolbar" aria-label="Add to the label">
+        <button class="tool" type="button" data-add="text" title="Add text"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></svg><span>Text</span></button>
+        <button class="tool" type="button" data-drawer="emoji" aria-pressed="false" title="Add emoji"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14.3c1.9 2.1 5.1 2.1 7 0M9.3 9.6h.01M14.7 9.6h.01"/></svg><span>Emoji</span></button>
+        <button class="tool" type="button" data-add="image" title="Add an image"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17.5l4.5-4.5 3 3 2.5-2.5 4 4"/></svg><span>Image</span></button>
+        <button class="tool" type="button" data-add="qr" title="Add a QR code"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 19h2M19 14h1"/></svg><span>QR code</span></button>
+        <button class="tool" type="button" data-drawer="shapes" aria-pressed="false" title="Add a shape"><svg viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="3"/></svg><span>Shape</span></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="tool icon" type="button" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 6l-5 5 5 5"/><path d="M4 11h10a5 5 0 0 1 0 10h-3"/></svg><span>Undo</span></button>
+        <button class="tool icon" type="button" id="btnRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 6l5 5-5 5"/><path d="M20 11H10a5 5 0 0 0 0 10h3"/></svg><span>Redo</span></button>
+      </div>
+      <div class="printbar">
+        <button class="btn ghost" id="btnSave" type="button" title="Save this label">Save</button>
+        <label class="copies" for="copies" title="Copies">Copies <input id="copies" type="number" min="1" max="20" step="1" value="1"></label>
+        <button class="btn primary" id="btnPrint" type="button">Print</button>
+      </div>
+    </div>
+    <div class="stage-foot"><span class="dims" id="dims"></span><span id="hint">Drag to move. Corner handle resizes, top handle rotates.</span></div>
+    <p class="msg" id="stageMsg" hidden></p>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" id="t-design" data-tab="design" aria-controls="tab-design" type="button">Design</button>
+    <button class="tab" role="tab" id="t-saved" data-tab="saved" aria-controls="tab-saved" type="button">Saved labels</button>
+    <button class="tab" role="tab" id="t-printer" data-tab="printer" aria-controls="tab-printer" type="button">Printer</button>
+  </nav>
+
+  <!-- DESIGN -->
+  <section class="panel" id="tab-design" role="tabpanel" aria-labelledby="t-design">
+    <div class="stack">
+      <div class="card" id="drawer-emoji" hidden>
+        <div class="card-head"><h2>Emoji</h2><button class="btn ghost small" type="button" data-close-drawer>Close</button></div>
+        <p class="note" id="emojiHowto">Tap an emoji to add it, or drag it onto the label.</p>
+        <div id="emojiGroups" class="stack"></div>
+        <div class="row">
+          <input id="emojiCustom" maxlength="16" placeholder="Or type any emoji" aria-label="Any emoji" style="flex:1 1 160px">
+          <button class="btn small" type="button" id="btnEmojiCustom">Add</button>
+        </div>
+        <div class="field">
+          <span class="lab">How new emoji print</span>
+          <div class="seg" role="radiogroup" aria-label="Emoji style for new emoji">
+            <label><input type="radio" name="newEmoji" value="line" data-pref="emojiStyle"><span>Line drawing</span></label>
+            <label><input type="radio" name="newEmoji" value="colour" data-pref="emojiStyle"><span>Colour, shaded with dots</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="drawer-shapes" hidden>
+        <div class="card-head"><h2>Shapes</h2><button class="btn ghost small" type="button" data-close-drawer>Close</button></div>
+        <div class="shapes" id="shapeList">
+          <button type="button" data-shape="box"><svg viewBox="0 0 44 26"><rect x="3" y="3" width="38" height="20" rx="2"/></svg>Box</button>
+          <button type="button" data-shape="frame"><svg viewBox="0 0 44 26"><rect x="2" y="2" width="40" height="22" rx="7"/></svg>Label border</button>
+          <button type="button" data-shape="line"><svg viewBox="0 0 44 26"><path d="M3 13h38"/></svg>Line</button>
+          <button type="button" data-shape="block"><svg viewBox="0 0 44 26"><rect x="3" y="5" width="38" height="16" rx="2" fill="currentColor"/></svg>Black block</button>
+          <button type="button" data-shape="circle"><svg viewBox="0 0 44 26"><circle cx="22" cy="13" r="10"/></svg>Circle</button>
+        </div>
+        <p class="note">Put text on a black block and turn on “White on black” for that text.</p>
+      </div>
+
+      <div class="grid2">
+        <div class="card" id="insp" hidden>
+          <div class="card-head">
+            <h2 id="inspTitle">Text</h2>
+            <div class="row">
+              <button class="btn ghost small" type="button" data-act="duplicate">Duplicate</button>
+              <button class="btn ghost small danger" type="button" data-act="delete">Delete</button>
+            </div>
+          </div>
+          <div class="stack" data-for="text">
+            <div class="field">
+              <label class="lab" for="itText">Text</label>
+              <textarea id="itText" data-p="text" rows="3" spellcheck="false" autocomplete="off"></textarea>
+              <div class="row"><button class="btn ghost small" type="button" data-act="date">Insert today’s date</button><span class="note">New line = new line on the label. Text shrinks or grows to fill its box.</span></div>
+            </div>
+            <div class="split">
+              <div class="field"><label class="lab" for="itFont">Font</label><select id="itFont" data-p="font"></select></div>
+              <div class="field"><span class="lab">Style</span><label class="tog"><input type="checkbox" data-p="bold" id="itBold"><span>Bold</span></label></div>
+            </div>
+            <div class="field">
+              <span class="lab">Alignment</span>
+              <div class="seg" role="radiogroup" aria-label="Alignment">
+                <label><input type="radio" name="itAlign" value="left" data-p="align"><span>Left</span></label>
+                <label><input type="radio" name="itAlign" value="center" data-p="align"><span>Centre</span></label>
+                <label><input type="radio" name="itAlign" value="right" data-p="align"><span>Right</span></label>
+              </div>
+            </div>
+            <div class="field">
+              <label class="lab" for="itLineH">Line spacing</label>
+              <input type="range" id="itLineH" min="0.75" max="1.6" step="0.05" data-p="lineH">
+            </div>
+          </div>
+          <div class="stack" data-for="emoji">
+            <div class="field"><label class="lab" for="itEmoji">Emoji</label><input id="itEmoji" data-p="text" maxlength="16"></div>
+          </div>
+          <div class="stack" data-for="text emoji">
+            <div class="field">
+              <span class="lab">Emoji print as</span>
+              <div class="seg" role="radiogroup" aria-label="Emoji style">
+                <label><input type="radio" name="itEmojiStyle" value="line" data-p="emojiStyle"><span>Line drawing</span></label>
+                <label><input type="radio" name="itEmojiStyle" value="colour" data-p="emojiStyle"><span>Colour, shaded</span></label>
+              </div>
+            </div>
+          </div>
+          <div class="stack" data-for="image">
+            <div class="field">
+              <span class="lab">Conversion</span>
+              <div class="seg" role="radiogroup" aria-label="Image conversion">
+                <label><input type="radio" name="itConv" value="dither" data-p="conv"><span>Shaded with dots</span></label>
+                <label><input type="radio" name="itConv" value="sharp" data-p="conv"><span>Black and white</span></label>
+              </div>
+            </div>
+            <div class="field"><label class="lab" for="itDark">Darkness</label><input type="range" id="itDark" min="60" max="230" step="1" data-p="dark"></div>
+            <div class="row"><button class="btn small" type="button" data-act="replace">Replace image</button></div>
+          </div>
+          <div class="stack" data-for="qr">
+            <div class="field"><label class="lab" for="itQr">QR code contents</label><input id="itQr" class="mono" data-p="data" placeholder="https://… or WIFI:T:WPA;S:name;P:password;;"><p class="note" id="qrNote">Phones scan it best at least 10 mm across.</p></div>
+          </div>
+          <div class="stack" data-for="rect">
+            <label class="tog"><input type="checkbox" data-p="fill" id="itFill"><span>Filled</span></label>
+            <div class="split">
+              <div class="field"><label class="lab" for="itStroke">Line thickness</label><input type="range" id="itStroke" min="1" max="12" step="1" data-p="stroke"></div>
+              <div class="field"><label class="lab" for="itRadius">Corner rounding</label><input type="range" id="itRadius" min="0" max="60" step="1" data-p="radius"></div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="field">
+              <label class="lab" for="itRot">Rotation</label>
+              <div class="row">
+                <input type="range" id="itRot" min="-180" max="180" step="1" data-p="rot" style="flex:1 1 140px">
+                <button class="btn ghost small" type="button" data-act="rot0">0°</button>
+                <button class="btn ghost small" type="button" data-act="rot90">Turn 90°</button>
+              </div>
+            </div>
+            <div class="row">
+              <label class="tog"><input type="checkbox" data-p="invert" id="itInvert"><span>White on black</span></label>
+              <label class="tog"><input type="checkbox" data-p="bg" id="itBg"><span>Clear what’s behind it</span></label>
+            </div>
+            <div class="row">
+              <button class="btn ghost small" type="button" data-act="front">Bring to front</button>
+              <button class="btn ghost small" type="button" data-act="back">Send to back</button>
+              <button class="btn ghost small" type="button" data-act="centerH">Centre across</button>
+              <button class="btn ghost small" type="button" data-act="centerV">Centre up and down</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="labelCard">
+          <div class="card-head"><h2>Label</h2><button class="btn ghost small" type="button" id="btnShowImage">Show as image</button></div>
+          <div class="field"><label class="lab" for="docName">Name</label><input id="docName" placeholder="Named after its first line of text" autocomplete="off"></div>
+          <div class="field">
+            <span class="lab">Length</span>
+            <div class="row">
+              <div class="seg" role="radiogroup" aria-label="Label length" style="flex:1 1 220px">
+                <label><input type="radio" name="docLen" value="30"><span>30 mm</span></label>
+                <label><input type="radio" name="docLen" value="40"><span>40 mm</span></label>
+                <label><input type="radio" name="docLen" value="50"><span>50 mm</span></label>
+                <label><input type="radio" name="docLen" value="custom"><span>Other</span></label>
+              </div>
+              <input type="number" id="docLenCustom" min="10" max="200" step="1" style="width:92px" aria-label="Length in millimetres" hidden>
+            </div>
+            <p class="note">M50 rolls are 30 mm labels with about 29 mm printable. Longer lengths suit continuous tape.</p>
+          </div>
+          <label class="tog"><input type="checkbox" id="docInvert"><span>Whole label white on black</span></label>
+          <div class="field">
+            <span class="lab">Start from</span>
+            <div class="templates" id="templates"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SAVED -->
+  <section class="panel" id="tab-saved" role="tabpanel" aria-labelledby="t-saved" hidden>
+    <div class="stack">
+      <p class="note" id="savedWhere"></p>
+      <div class="saved-grid" id="savedGrid"></div>
+    </div>
+  </section>
+
+  <!-- PRINTER -->
+  <section class="panel" id="tab-printer" role="tabpanel" aria-labelledby="t-printer" hidden>
+    <div class="stack">
+      <div class="card">
+        <h2>Print with</h2>
+        <div class="seg" role="radiogroup" aria-label="Print with">
+          <label><input type="radio" name="route" value="auto" data-pref="route"><span>Whichever works</span></label>
+          <label><input type="radio" name="route" value="bridge" data-pref="route"><span>Print server</span></label>
+          <label><input type="radio" name="route" value="phone" data-pref="route"><span>This device’s Bluetooth</span></label>
+        </div>
+        <p class="msg" id="routeMsg"></p>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h2>Print server</h2><button class="btn small" type="button" id="btnBridgeCheck">Check printer</button></div>
+          <dl class="kv" id="bridgeInfo"></dl>
+          <p class="note">The print server prints through its own Bluetooth adapter, so it works from any device, including iPhones and the Home Assistant app.</p>
+          <details class="more">
+            <summary>Print server settings</summary>
+            <div class="stack">
+              <div class="field"><label class="lab" for="bridgeUrl">Print server address</label><input id="bridgeUrl" class="mono" data-pref="bridgeUrl" placeholder="Blank = this site" autocomplete="off" spellcheck="false"></div>
+              <div class="field"><label class="lab" for="bridgeToken">Access token</label><input id="bridgeToken" class="mono" data-pref="bridgeToken" type="password" placeholder="Only if your proxy doesn't add it" autocomplete="off"></div>
+              <div class="row"><button class="btn small" type="button" id="btnBridgeSave">Save and check</button></div>
+            </div>
+          </details>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>This device’s Bluetooth</h2>
+            <div class="row"><button class="btn small" type="button" id="btnPhoneConnect">Connect</button><button class="btn ghost small" type="button" id="btnPhoneDisconnect" hidden>Disconnect</button></div>
+          </div>
+          <dl class="kv" id="phoneInfo"></dl>
+          <p class="note" id="phoneNote">Works in Chrome on Android (version 137 or later) and in Chrome or Edge on a computer, with the printer paired in Bluetooth settings. The page lets go of the printer after two idle minutes.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Calibration</h2>
+        <div class="row">
+          <div class="field" style="flex:0 1 200px"><label class="lab" for="offsetMm">Shift along the label (mm)</label><input type="number" id="offsetMm" min="-20" max="20" step="0.5" data-k="offsetMm" data-obj="drv"></div>
+          <button class="btn small" type="button" id="btnRuler">Print ruler</button>
+          <button class="btn small" type="button" id="btnTest">Print test label</button>
+        </div>
+        <p class="note">Print the ruler and check the 0 mark sits at the label’s left edge. Positive numbers move the design to the right. This applies to both ways of printing.</p>
+      </div>
+      <details class="more">
+        <summary>Advanced: protocol, console and capture decoder</summary>
+        <div class="stack">
+          <div class="card">
+            <h2>Print protocol (this device’s Bluetooth)</h2>
+            <p class="note">Decoded from the Kodak app. Each label is 12 zero bytes and <code>10 ff f1 02</code>, an ESC/POS raster image, then <code>1d 0c</code> and <code>10 ff f1 45</code>. The printer answers <code>aa</code> when the label is done. The print server uses the same protocol.</p>
+            <div class="grid2">
+              <div class="stack">
+                <div class="field"><label class="lab" for="preset">Starting point</label><select id="preset" data-k="preset" data-obj="drv"></select></div>
+                <div class="field"><label class="lab" for="prefix">Bytes before the image</label><input id="prefix" class="mono" data-k="prefix" data-obj="drv" spellcheck="false" autocomplete="off"></div>
+                <div class="field">
+                  <span class="lab">Image data</span>
+                  <div class="seg" role="radiogroup" aria-label="Image data format">
+                    <label><input type="radio" name="body" value="gsv0" data-k="body" data-obj="drv"><span>ESC/POS raster</span></label>
+                    <label><input type="radio" name="body" value="raw" data-k="body" data-obj="drv"><span>Bitmap only</span></label>
+                  </div>
+                </div>
+                <div class="field"><label class="lab" for="suffix">Bytes after the image</label><input id="suffix" class="mono" data-k="suffix" data-obj="drv" spellcheck="false" autocomplete="off"></div>
+                <p class="note">Placeholders: <code>{bpl}</code>, <code>{lines16}</code>, <code>{lines16be}</code>, <code>{lines}</code>, <code>{dots16}</code>, <code>{copies}</code>.</p>
+              </div>
+              <div class="stack">
+                <div class="field">
+                  <span class="lab">Orientation on the printhead</span>
+                  <div class="seg" role="radiogroup" aria-label="Orientation">
+                    <label><input type="radio" name="rot" value="cw" data-k="rotation" data-obj="drv"><span>Turn right</span></label>
+                    <label><input type="radio" name="rot" value="ccw" data-k="rotation" data-obj="drv"><span>Turn left</span></label>
+                    <label><input type="radio" name="rot" value="none" data-k="rotation" data-obj="drv"><span>As drawn</span></label>
+                  </div>
+                </div>
+                <div class="row">
+                  <label class="tog"><input type="checkbox" data-k="mirror" data-obj="drv"><span>Mirror</span></label>
+                  <label class="tog"><input type="checkbox" data-k="invertBits" data-obj="drv"><span>Invert bits</span></label>
+                </div>
+                <div class="split">
+                  <div class="field"><label class="lab" for="chunk">Packet size (bytes)</label><input type="number" id="chunk" min="20" max="512" step="1" data-k="chunk" data-obj="drv"></div>
+                  <div class="field"><label class="lab" for="delay">Pause between (ms)</label><input type="number" id="delay" min="0" max="500" step="1" data-k="delay" data-obj="drv"></div>
+                </div>
+                <div class="field"><label class="lab" for="headDots">Printhead width (dots)</label><input type="number" id="headDots" min="16" max="384" step="8" data-k="headDots" data-obj="drv"></div>
+              </div>
+            </div>
+            <p class="msg" id="jobInfo"></p>
+          </div>
+          <div class="card">
+            <h2>Console</h2>
+            <div class="log" id="log" aria-live="polite"></div>
+            <form class="row" id="rawForm">
+              <input id="rawHex" class="mono" style="flex:1 1 220px" placeholder="Hex to send, e.g. 10 ff 70" spellcheck="false" autocomplete="off" aria-label="Hex bytes to send">
+              <button class="btn small" type="submit">Send</button>
+              <button class="btn ghost small" type="button" id="btnClearLog">Clear</button>
+            </form>
+          </div>
+<div id="decodeBox">
+    <div class="stack">
+      <div class="grid2">
+        <div class="card">
+          <h2>Decode a Bluetooth capture</h2>
+          <p class="note">Record the Kodak app printing one short label, then open the log here. You get every byte the app sent, a bitmap view to spot the image, and a replay button to prove the bytes work from this page.</p>
+          <label class="drop" for="capFile">
+            <strong>Open btsnoop_hci.log or .pklg</strong>
+            <span class="note">Nothing is uploaded. The file is read in this browser.</span>
+            <input type="file" id="capFile">
+          </label>
+          <p class="msg" id="capStatus" hidden></p>
+        </div>
+        <div class="card how">
+          <h2>How to capture</h2>
+          <h3>Android</h3>
+          <ol>
+            <li>Settings → About phone → tap <em>Build number</em> seven times.</li>
+            <li>Developer options → <em>Enable Bluetooth HCI snoop log</em> → Enabled. Turn Bluetooth off and on.</li>
+            <li>In the Kodak app, print one label with short, bold text such as <code>AB</code>.</li>
+            <li>Developer options → <em>Take bug report</em>. In the zip, open <code>FS/data/misc/bluetooth/logs/btsnoop_hci.log</code>.</li>
+          </ol>
+          <h3>iPhone (needs a Mac)</h3>
+          <ol>
+            <li>Install Apple's Bluetooth logging profile on the iPhone (developer.apple.com → Bug Reporting → Profiles and Logs).</li>
+            <li>On the Mac, open PacketLogger (Additional Tools for Xcode) → File → New iOS Trace.</li>
+            <li>Print one label from the Kodak app, then save the trace as <code>.pklg</code>.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div id="capOut" class="stack" hidden>
+        <div class="card">
+          <h2>Where the bytes went</h2>
+          <div class="tablewrap"><table id="hTable">
+            <thead><tr><th>Handle</th><th>Characteristic</th><th class="num">Sent</th><th class="num">Bytes</th><th class="num">Received</th><th class="num">Bytes</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+          <ul class="facts" id="facts"></ul>
+          <div class="row">
+            <button class="btn primary small" id="btnUseJob" type="button" disabled>Use the app’s commands for printing</button>
+            <button class="btn small" id="btnCapCopy" type="button">Copy summary for Claude</button>
+            <button class="btn small" id="btnReplay" type="button">Replay to connected printer</button>
+          </div>
+          <p class="note">The summary and replay use only the highlighted row, so other devices in the capture, such as a watch, stay out of both.</p>
+          <p class="msg" id="replayMsg" hidden></p>
+        </div>
+        <div class="card">
+          <h2>Bitmap finder</h2>
+          <p class="note">Shows the bytes sent to the selected handle as dots. Adjust bytes per line until the label appears; the header length is what sits above it.</p>
+          <div class="row">
+            <div class="field" style="flex:1 1 120px"><label class="lab" for="bfBpl">Bytes per line</label><input type="number" id="bfBpl" min="1" max="256" value="12"></div>
+            <div class="field" style="flex:1 1 120px"><label class="lab" for="bfOff">Skip first bytes</label><input type="number" id="bfOff" min="0" value="0"></div>
+            <div class="field" style="flex:1 1 120px"><label class="lab" for="bfPkt">Skip per packet</label><input type="number" id="bfPkt" min="0" max="64" value="0"></div>
+            <label class="tog"><input type="checkbox" id="bfInv"><span>Invert</span></label>
+          </div>
+          <div class="bmp"><canvas id="bfCanvas" width="96" height="1"></canvas></div>
+          <p class="note mono" id="bfInfo"></p>
+        </div>
+        <div class="card">
+          <h2>Traffic on the selected handle</h2>
+          <div class="log tall" id="capLog"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <p class="foot">Page <span id="pageVer"></span>. Unofficial tool, not affiliated with Kodak or Prinics. Designs and settings stay in this browser unless you save them to the print server.</p>
+</div>
+
+<input type="file" id="fileImg" accept="image/*" hidden>
+<dialog id="imgDlg" aria-label="Label image">
+  <strong>Label image</strong>
+  <p class="note">Native printer resolution, one pixel per dot. Long-press or right-click to save it.</p>
+  <img id="imgOut" alt="Label as it will print">
+  <div class="row"><button class="btn" type="button" data-close>Close</button></div>
+</dialog>
+<dialog id="copyDlg" aria-label="Copy text">
+  <strong id="copyTitle">Copy this text</strong>
+  <p class="note">Your browser blocked automatic copying. The text is selected below.</p>
+  <textarea id="copyText" class="mono" readonly></textarea>
+  <div class="row"><button class="btn" type="button" data-close>Close</button></div>
+</dialog>
+
+<script>
+(() => {
+'use strict';
+const PAGE_VERSION = 'v1.3.0';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const DPMM = 8; // 203 dpi ≈ 8 dots per mm
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const h2 = n => (n & 255).toString(16).padStart(2, '0');
+const hex = (u8, max = Infinity) => { const n = Math.min(u8.length, max); const a = new Array(n); for (let i = 0; i < n; i++) a[i] = h2(u8[i]); return a.join(' ') + (u8.length > n ? ' …' : ''); };
+const ascii = u8 => Array.from(u8, b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+const token = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rgb = c => { const m = /^#?([0-9a-f]{6})$/i.exec(c); const v = m ? parseInt(m[1], 16) : 0xffffff; return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
+const fmtB = n => n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B';
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const concat = parts => { let n = 0; for (const p of parts) n += p.length; const o = new Uint8Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; };
+const embedded = (() => { try { return window.self !== window.top; } catch { return true; } })();
+const todayStr = () => new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/* ---------- fonts and emoji ---------- */
+const FONTS = {
+  archivoc: { name: 'Archivo Condensed', css: '"Archivo"', n: 600, b: 850, stretch: 'condensed' },
+  archivo:  { name: 'Archivo', css: '"Archivo"', n: 500, b: 800, stretch: 'normal' },
+  bebas:    { name: 'Bebas Neue (capitals)', css: '"Bebas Neue"', n: 400, b: 400 },
+  fredoka:  { name: 'Fredoka (rounded)', css: '"Fredoka"', n: 500, b: 700 },
+  plexmono: { name: 'Plex Mono', css: '"IBM Plex Mono"', n: 500, b: 600 },
+  caveat:   { name: 'Caveat (handwritten)', css: '"Caveat"', n: 600, b: 600 },
+  serif:    { name: 'Noto Serif', css: '"Noto Serif"', n: 600, b: 600 },
+  system:   { name: 'System font', css: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', n: 500, b: 800 },
+};
+const EMOJI_COLOUR = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"';
+const EMOJI_GROUPS = [
+  ['Kitchen', ['🍲','🥫','🧂','🌶️','🍞','🧀','🥛','🥚','🍝','🍚','🥕','🍎','🍪','☕','🍷','❄️','🧊','🔥']],
+  ['Home and garden', ['📦','🧰','🔧','🔑','🧹','🧺','🧴','🪴','🌱','🏠','🛏️','🚿','💊','🩹']],
+  ['Tech', ['🔌','🔋','💡','🖥️','💾','📷','🎧','📱','⌨️','🖨️','📡','🎮']],
+  ['Signs and people', ['⭐','❤️','✅','❌','⚠️','🚫','♻️','👶','🧸','🎁','🐱','🐶','👍','🙂']],
+];
+
+/* ---------- settings ---------- */
+const P = { route: 'auto', bridgeUrl: '', bridgeToken: '', emojiStyle: 'line', tab: 'design' };
+const PRESETS = {
+  m50:      { name: 'Kodak M50 (decoded from the Kodak app)', prefix: '00 00 00 00 00 00 00 00 00 00 00 00 10 ff f1 02', body: 'gsv0', band: 0, suffix: '1d 0c 10 ff f1 45' },
+  escpos:   { name: 'Generic ESC/POS raster, then feed', prefix: '1b 40', body: 'gsv0', band: 0, suffix: '1b 64 02' },
+  raw:      { name: 'Bitmap bytes only', prefix: '', body: 'raw', band: 0, suffix: '' },
+  custom:   { name: 'Custom (your edits)' },
+};
+const D_DEF = { preset: 'm50', prefix: PRESETS.m50.prefix, body: 'gsv0', band: 0, suffix: PRESETS.m50.suffix, rotation: 'cw', mirror: false, invertBits: false,
+  chunk: 255, delay: 10, offsetMm: 0, headDots: 112, serialService: '' };
+const D = { ...D_DEF };
+const STORE_KEY = 'labelbench.v2';
+try {
+  const sv = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+  if (sv) { Object.assign(P, sv.P || {}); Object.assign(D, sv.D || {}); }
+  else { const old = JSON.parse(localStorage.getItem('labelbench.v1') || 'null'); if (old && old.D && 'offsetMm' in old.D) D.offsetMm = +old.D.offsetMm || 0; }
+} catch {}
+const savePrefs = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify({ P, D })); } catch {} };
+const save = savePrefs; // used by the capture decoder
+
+/* ---------- the design ---------- */
+const H = () => Math.max(16, Math.round((+D.headDots || 112) / 8) * 8);
+const W = () => Math.round(clamp(+doc.length || 30, 10, 200) * DPMM);
+let doc = { name: '', length: 30, invert: false, items: [], savedId: null };
+const images = new Map(); // id -> { src, el }
+let selId = null;
+const sel = () => doc.items.find(i => i.id === selId) || null;
+
+function newItem(type, props = {}) {
+  const w = W(), h = H();
+  const base = { id: uid(), type, cx: w / 2, cy: h / 2, w: 80, h: 80, rot: 0, invert: false, bg: false };
+  const defaults = {
+    text: { text: 'Text', font: 'archivoc', bold: true, align: 'center', lineH: 1.05, emojiStyle: 'line', w: w - 24, h: h - 24 },
+    emoji: { text: '⭐', emojiStyle: P.emojiStyle, w: Math.round(h * 0.62), h: Math.round(h * 0.62) },
+    image: { img: null, conv: 'dither', dark: 140 },
+    qr: { data: 'https://', w: h - 16, h: h - 16 },
+    rect: { fill: false, stroke: 3, radius: 6, w: w * 0.5, h: h * 0.5 },
+  };
+  return { ...base, ...defaults[type], ...props };
+}
+
+const TEMPLATES = [
+  { name: 'Big text', hint: 'One line, as large as fits', make: () => [newItem('text', { text: 'Pasta' })] },
+  { name: 'Emoji and text', hint: 'Picture on the left', make: () => { const w = W(), h = H(); const e = Math.round(h * 0.7); return [newItem('emoji', { text: '🍲', cx: 12 + e / 2, w: e, h: e }), newItem('text', { text: 'Soup\nmade ' + todayStr().replace(/ \d{4}$/, ''), cx: (12 + e + 6 + w - 12) / 2, w: w - 12 - (12 + e + 6) }) ]; } },
+  { name: 'Title and date', hint: 'Big name, small date', make: () => { const w = W(), h = H(); return [newItem('text', { text: 'Bolognese', cy: h * 0.38, h: h * 0.52 }), newItem('text', { text: todayStr(), font: 'archivo', bold: false, cy: h * 0.78, h: h * 0.24 })]; } },
+  { name: 'QR code and text', hint: 'Wi-Fi, links, manuals', make: () => { const w = W(), h = H(); const q = h - 20; return [newItem('qr', { data: 'https://', cx: 10 + q / 2, w: q, h: q }), newItem('text', { text: 'Scan me', cx: (10 + q + 6 + w - 10) / 2, w: w - 10 - (10 + q + 6) })]; } },
+  { name: 'Framed', hint: 'Rounded border', make: () => { const w = W(), h = H(); return [newItem('rect', { w: w - 6, h: h - 6, radius: 14, stroke: 3 }), newItem('text', { text: 'Spices', w: w - 34, h: h - 34 })]; } },
+  { name: 'Black banner', hint: 'White text on black', make: () => { const w = W(), h = H(); return [newItem('rect', { fill: true, radius: 12, w: w - 6, h: h - 6 }), newItem('text', { text: 'DO NOT\nUNPLUG', invert: true, w: w - 30, h: h - 26 })]; } },
+];
+
+/* ---------- history ---------- */
+const hist = { stack: [], i: -1 };
+const snap = () => JSON.stringify({ name: doc.name, length: doc.length, invert: doc.invert, items: doc.items, savedId: doc.savedId });
+let commitT = 0;
+function commit() {
+  clearTimeout(commitT);
+  const s = snap();
+  if (hist.stack[hist.i] === s) return;
+  hist.stack = hist.stack.slice(0, hist.i + 1); hist.stack.push(s);
+  if (hist.stack.length > 80) hist.stack.shift();
+  hist.i = hist.stack.length - 1;
+  saveDraft(); syncUndo();
+}
+const commitSoon = () => { clearTimeout(commitT); commitT = setTimeout(commit, 650); };
+function restore(s) {
+  const o = JSON.parse(s);
+  doc = { ...doc, ...o, items: o.items };
+  if (!sel()) selId = null;
+  afterDocChange();
+}
+function undo() { if (commitT) commit(); if (hist.i > 0) { hist.i--; restore(hist.stack[hist.i]); saveDraft(); syncUndo(); } }
+function redo() { if (hist.i < hist.stack.length - 1) { hist.i++; restore(hist.stack[hist.i]); saveDraft(); syncUndo(); } }
+function syncUndo() { $('#btnUndo').disabled = hist.i <= 0; $('#btnRedo').disabled = hist.i >= hist.stack.length - 1; }
+
+function serializeDesign() {
+  const used = {};
+  for (const it of doc.items) if (it.type === 'image' && it.img && images.has(it.img)) used[it.img] = images.get(it.img).src;
+  return { v: 1, name: doc.name, length: doc.length, invert: doc.invert, items: doc.items, images: used };
+}
+function saveDraft() { try { localStorage.setItem('labelbench.draft', JSON.stringify({ design: serializeDesign(), savedId: doc.savedId })); } catch {} }
+function loadDesign(design, savedId = null) {
+  for (const [id, src] of Object.entries(design.images || {})) addImageSrc(id, src);
+  doc = { name: design.name || '', length: +design.length || 30, invert: !!design.invert, items: (design.items || []).map(it => ({ ...it })), savedId };
+  selId = (doc.items.find(i => i.type === 'text') || doc.items[0] || {}).id || null;
+  afterDocChange(); commit();
+}
+
+/* ---------- rendering ---------- */
+const mctx = document.createElement('canvas').getContext('2d');
+const layerCv = document.createElement('canvas');
+const lctx = layerCv.getContext('2d', { willReadFrequently: true });
+if (window.qrcode && qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+
+function famStack(fontKey, emojiStyle) {
+  const f = FONTS[fontKey] || FONTS.archivoc;
+  const emo = emojiStyle === 'colour' ? EMOJI_COLOUR : `"Noto Emoji", ${EMOJI_COLOUR}`;
+  return `${f.css}, "Helvetica Neue", Arial, Roboto, ${emo}, sans-serif`;
+}
+function itemFont(it, px) {
+  if (it.type === 'emoji') return `500 ${px}px ${it.emojiStyle === 'colour' ? EMOJI_COLOUR : '"Noto Emoji", ' + EMOJI_COLOUR}`;
+  const f = FONTS[it.font] || FONTS.archivoc;
+  return `${it.bold ? f.b : f.n} ${px}px ${famStack(it.font, it.emojiStyle)}`;
+}
+function applyFont(ctx, it, px) {
+  ctx.font = itemFont(it, px);
+  try { if ('fontStretch' in ctx) ctx.fontStretch = it.type === 'text' ? ((FONTS[it.font] || {}).stretch || 'normal') : 'normal'; } catch {}
+}
+function measure(it, lines, px) {
+  applyFont(mctx, it, px);
+  let w = 0, asc = 0, desc = 0;
+  for (const ln of lines) { if (!ln) continue; const m = mctx.measureText(ln); w = Math.max(w, m.width); asc = Math.max(asc, m.actualBoundingBoxAscent); desc = Math.max(desc, m.actualBoundingBoxDescent); }
+  if (!asc && !desc) asc = px * 0.7;
+  const lh = px * (it.type === 'emoji' ? 1 : (+it.lineH || 1.05));
+  return { w, asc, desc, lh, h: asc + desc + (lines.length - 1) * lh };
+}
+const fitCache = new Map();
+function linesOf(it) { const l = String(it.text || '').replace(/\r/g, '').split('\n'); while (l.length > 1 && !l[l.length - 1].trim()) l.pop(); return l; }
+function fitPx(it) {
+  const key = [it.type, it.text, it.font, it.bold, it.lineH, it.emojiStyle, Math.round(it.w), Math.round(it.h)].join('|');
+  if (fitCache.has(key)) return fitCache.get(key);
+  const lines = linesOf(it);
+  let lo = 3, hi = Math.max(4, Math.ceil(it.h * 2.5));
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; const m = measure(it, lines, mid); if (m.w <= it.w && m.h <= it.h) lo = mid; else hi = mid - 1; }
+  if (fitCache.size > 400) fitCache.clear();
+  fitCache.set(key, lo);
+  return lo;
+}
+const loadedFonts = new Set();
+async function ensureFonts(items) {
+  const loads = [];
+  for (const it of items) {
+    if (it.type !== 'text' && it.type !== 'emoji') continue;
+    const f = itemFont(it, 40), k = f + '|' + it.text;
+    if (loadedFonts.has(k)) continue;
+    loads.push(document.fonts.load(f, it.text || 'A').then(() => loadedFonts.add(k)).catch(() => loadedFonts.add(k)));
+  }
+  if (loads.length) { await Promise.race([Promise.all(loads), sleep(2500)]); fitCache.clear(); }
+}
+const qrCache = new Map();
+function qrFor(data) {
+  if (qrCache.has(data)) return qrCache.get(data);
+  let q = null;
+  if (typeof window.qrcode === 'function') { try { q = qrcode(0, 'M'); q.addData(data || ' '); q.make(); } catch { q = 'toolong'; } }
+  qrCache.set(data, q); return q;
+}
+
+function drawItem(ctx, it) {
+  ctx.save();
+  ctx.translate(it.cx, it.cy); ctx.rotate((it.rot || 0) * Math.PI / 180);
+  ctx.fillStyle = '#000'; ctx.strokeStyle = '#000';
+  if (it.type === 'text' || it.type === 'emoji') {
+    const lines = it.type === 'emoji' ? [String(it.text || '')] : linesOf(it);
+    if (lines.some(l => l)) {
+      const px = fitPx(it), m = measure(it, lines, px);
+      applyFont(ctx, it, px); ctx.textBaseline = 'alphabetic';
+      const al = it.type === 'emoji' ? 'center' : it.align;
+      ctx.textAlign = al === 'left' ? 'left' : al === 'right' ? 'right' : 'center';
+      const x = al === 'left' ? -it.w / 2 : al === 'right' ? it.w / 2 : 0;
+      let y = -it.h / 2 + (it.h - m.h) / 2 + m.asc;
+      for (const ln of lines) { if (ln) ctx.fillText(ln, x, y); y += m.lh; }
+    }
+  } else if (it.type === 'image') {
+    const im = images.get(it.img);
+    if (im && im.el.complete && im.el.naturalWidth) {
+      const k = Math.min(it.w / im.el.naturalWidth, it.h / im.el.naturalHeight), dw = im.el.naturalWidth * k, dh = im.el.naturalHeight * k;
+      ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im.el, -dw / 2, -dh / 2, dw, dh);
+    }
+  } else if (it.type === 'qr') {
+    const q = qrFor(it.data);
+    if (q && q !== 'toolong') {
+      const n = q.getModuleCount(), mod = Math.max(1, Math.floor(Math.min(it.w, it.h) / n)), size = n * mod, o = -size / 2;
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) ctx.fillRect(Math.round(o + c * mod), Math.round(o + r * mod), mod, mod);
+    }
+  } else if (it.type === 'rect') {
+    const s = it.fill ? 0 : Math.max(1, +it.stroke || 2), r = Math.min(+it.radius || 0, it.w / 2, it.h / 2);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-it.w / 2 + s / 2, -it.h / 2 + s / 2, it.w - s, it.h - s, Math.max(0, r - s / 2)); else ctx.rect(-it.w / 2 + s / 2, -it.h / 2 + s / 2, it.w - s, it.h - s);
+    if (it.fill) ctx.fill(); else { ctx.lineWidth = s; ctx.stroke(); }
+  }
+  ctx.restore();
+}
+function convMode(it) {
+  if (it.type === 'image') return it.conv === 'sharp' ? ['threshold', +it.dark || 140] : ['dither', +it.dark || 140];
+  if (it.type === 'text' || it.type === 'emoji') return ['smart', 150];
+  return ['threshold', 128];
+}
+function layerBits(it, w, h, maskOnly = false) {
+  if (layerCv.width !== w || layerCv.height !== h) { layerCv.width = w; layerCv.height = h; }
+  lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.fillStyle = '#fff'; lctx.fillRect(0, 0, w, h);
+  if (maskOnly) {
+    lctx.translate(it.cx, it.cy); lctx.rotate((it.rot || 0) * Math.PI / 180); lctx.fillStyle = '#000';
+    lctx.fillRect(-it.w / 2, -it.h / 2, it.w, it.h);
+    return binarize(lctx.getImageData(0, 0, w, h).data, w, h, 'threshold', 128);
+  }
+  drawItem(lctx, it);
+  const [mode, t] = convMode(it);
+  return binarize(lctx.getImageData(0, 0, w, h).data, w, h, mode, t);
+}
+/* Smart: unsaturated pixels (text, outlines) get a hard threshold; saturated ones (colour emoji) get Atkinson dithering. */
+function binarize(d, w, h, mode, T) {
+  const n = w * h, g = new Float32Array(n), soft = new Uint8Array(n), out = new Uint8Array(n);
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    const a = d[j + 3] / 255, r = d[j] * a + 255 * (1 - a), gg = d[j + 1] * a + 255 * (1 - a), b = d[j + 2] * a + 255 * (1 - a);
+    g[i] = 0.299 * r + 0.587 * gg + 0.114 * b;
+    if (mode === 'dither') soft[i] = 1; else if (mode === 'smart') soft[i] = (Math.max(r, gg, b) - Math.min(r, gg, b)) > 40 ? 1 : 0;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!soft[i]) { out[i] = g[i] < T ? 1 : 0; continue; }
+    const old = g[i], nv = old < T ? 0 : 255; out[i] = nv ? 0 : 1;
+    const e = (old - nv) / 8;
+    if (x + 1 < w && soft[i + 1]) g[i + 1] += e;
+    if (x + 2 < w && soft[i + 2]) g[i + 2] += e;
+    if (y + 1 < h) { const k = i + w; if (x > 0 && soft[k - 1]) g[k - 1] += e; if (soft[k]) g[k] += e; if (x + 1 < w && soft[k + 1]) g[k + 1] += e; }
+    if (y + 2 < h && soft[i + 2 * w]) g[i + 2 * w] += e;
+  }
+  return out;
+}
+function renderDoc() {
+  const w = W(), h = H(), bits = new Uint8Array(w * h);
+  for (const it of doc.items) {
+    const layer = layerBits(it, w, h);
+    if (it.bg || it.invert) {
+      const mask = layerBits(it, w, h, true);
+      if (it.bg) for (let i = 0; i < bits.length; i++) if (mask[i]) bits[i] = 0;
+      if (it.invert) { for (let i = 0; i < bits.length; i++) if (mask[i]) bits[i] = layer[i] ? 0 : 1; continue; }
+    }
+    for (let i = 0; i < bits.length; i++) if (layer[i]) bits[i] = 1;
+  }
+  if (doc.invert) for (let i = 0; i < bits.length; i++) bits[i] ^= 1;
+  return { W: w, H: h, bits };
+}
+
+/* ---------- preview ---------- */
+const pv = $('#pv'), overlay = $('#overlay');
+let last = null, raf = 0, seq = 0;
+function bitsToCanvas(r, paper, dot) {
+  const c = document.createElement('canvas'); c.width = r.W; c.height = r.H;
+  const t = c.getContext('2d'), id = t.createImageData(r.W, r.H), Pp = rgb(paper), K = rgb(dot);
+  for (let i = 0, j = 0; i < r.bits.length; i++, j += 4) { const q = r.bits[i] ? K : Pp; id.data[j] = q[0]; id.data[j + 1] = q[1]; id.data[j + 2] = q[2]; id.data[j + 3] = 255; }
+  t.putImageData(id, 0, 0); return c;
+}
+function drawPreview(r) {
+  const k = 4;
+  if (pv.width !== r.W * k || pv.height !== r.H * k) { pv.width = r.W * k; pv.height = r.H * k; }
+  const ctx = pv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bitsToCanvas(r, token('--paper') || '#ffffff', token('--dot') || '#111111'), 0, 0, r.W * k, r.H * k);
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let x = 1; x < r.W; x++) ctx.fillRect(x * k, 0, 1, r.H * k);
+  for (let y = 1; y < r.H; y++) ctx.fillRect(0, y * k, r.W * k, 1);
+  sizePreview();
+  $('#dims').textContent = `${(r.W / DPMM).toFixed(0)} × ${(r.H / DPMM).toFixed(0)} mm, ${r.W} × ${r.H} dots`;
+  $('#emptyHint').hidden = doc.items.length > 0;
+  updateJobInfo();
+}
+function sizePreview() {
+  if (!last) return;
+  const avail = $('#tape').clientWidth - 56;
+  const maxH = Math.max(90, Math.min(300, window.innerHeight * 0.3));
+  pv.style.width = Math.max(80, Math.floor(Math.min(avail, last.W * 4, maxH * last.W / last.H))) + 'px';
+  updateOverlay();
+}
+function scheduleRender() {
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(async () => {
+    const my = ++seq;
+    await ensureFonts(doc.items);
+    if (my !== seq) return;
+    last = renderDoc(); drawPreview(last);
+  });
+}
+
+/* ---------- direct manipulation ---------- */
+const scale = () => pv.clientWidth / W();
+function toDots(e) { const r = overlay.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W(), y: (e.clientY - r.top) / r.height * H() }; }
+function local(it, p) { const a = -(it.rot || 0) * Math.PI / 180, dx = p.x - it.cx, dy = p.y - it.cy; return { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) }; }
+function hits(p) { const pad = 3 / Math.max(0.5, scale()) + 1; return doc.items.slice().reverse().filter(it => { const l = local(it, p); return Math.abs(l.x) <= it.w / 2 + pad && Math.abs(l.y) <= it.h / 2 + pad; }); }
+function updateOverlay() {
+  const it = sel(), box = $('#selBox');
+  if (!it || !last) { box.hidden = true; return; }
+  const s = scale();
+  box.hidden = false;
+  Object.assign(box.style, { left: (it.cx - it.w / 2) * s + 'px', top: (it.cy - it.h / 2) * s + 'px', width: it.w * s + 'px', height: it.h * s + 'px', transform: `rotate(${it.rot || 0}deg)` });
+}
+const LOCK_ASPECT = new Set(['emoji', 'image', 'qr']);
+let drag = null;
+overlay.addEventListener('pointerdown', e => {
+  if (e.button > 0) return;
+  const p = toDots(e), handle = e.target.closest && e.target.closest('[data-h]');
+  const it = sel();
+  if (handle && it) drag = { mode: handle.dataset.h, id: it.id, p0: p, start: { ...it }, moved: false };
+  else {
+    const hit = hits(p);
+    if (hit.length) {
+      const wasSel = hit.some(h => h.id === selId);
+      const target = wasSel ? sel() : hit[0];
+      select(target.id);
+      drag = { mode: 'move', id: target.id, p0: p, start: { ...target }, moved: false, hit, wasSel };
+    } else { select(null); drag = null; }
+  }
+  if (drag) { overlay.setPointerCapture(e.pointerId); e.preventDefault(); }
+  overlay.focus({ preventScroll: true });
+});
+overlay.addEventListener('pointermove', e => {
+  const p = toDots(e);
+  if (!drag) { overlay.classList.toggle('over-item', hits(p).length > 0); return; }
+  const it = doc.items.find(i => i.id === drag.id); if (!it) return;
+  const s0 = drag.start, w = W(), h = H();
+  if (!drag.moved && Math.hypot(p.x - drag.p0.x, p.y - drag.p0.y) * scale() < 3) return;
+  drag.moved = true;
+  let gv = false, gh = false;
+  if (drag.mode === 'move') {
+    it.cx = clamp(s0.cx + p.x - drag.p0.x, 0, w); it.cy = clamp(s0.cy + p.y - drag.p0.y, 0, h);
+    const snap = 4 / Math.max(0.5, scale()) + 1.5;
+    if (Math.abs(it.cx - w / 2) < snap) { it.cx = w / 2; gv = true; }
+    if (Math.abs(it.cy - h / 2) < snap) { it.cy = h / 2; gh = true; }
+  } else if (drag.mode === 'size') {
+    const l = local(it, p);
+    let nw = Math.max(6, Math.abs(l.x) * 2), nh = Math.max(6, Math.abs(l.y) * 2);
+    if (LOCK_ASPECT.has(it.type) || e.shiftKey) { const k = Math.max(nw / s0.w, nh / s0.h); nw = s0.w * k; nh = s0.h * k; }
+    it.w = Math.min(nw, w * 3); it.h = Math.min(nh, h * 3);
+  } else if (drag.mode === 'rot') {
+    let a = Math.atan2(p.y - it.cy, p.x - it.cx) * 180 / Math.PI + 90;
+    a = ((a + 540) % 360) - 180;
+    const near = Math.round(a / 45) * 45;
+    if (Math.abs(a - near) < 5) a = near;
+    it.rot = Math.round(a);
+    $('#itRot').value = it.rot;
+  }
+  $('#guideV').hidden = !gv; $('#guideH').hidden = !gh;
+  if (gv) $('#guideV').style.left = (w / 2) * scale() + 'px';
+  if (gh) $('#guideH').style.top = (h / 2) * scale() + 'px';
+  updateOverlay(); scheduleRender();
+});
+function endDrag() {
+  if (!drag) return;
+  $('#guideV').hidden = $('#guideH').hidden = true;
+  if (drag.moved) commit();
+  else if (drag.mode === 'move' && drag.wasSel && drag.hit && drag.hit.length > 1) {
+    // Tapping an already-selected item again picks the one underneath it.
+    const i = drag.hit.findIndex(h => h.id === selId);
+    select(drag.hit[(i + 1) % drag.hit.length].id);
+  }
+  drag = null;
+}
+overlay.addEventListener('pointerup', endDrag);
+overlay.addEventListener('pointercancel', endDrag);
+overlay.addEventListener('dblclick', e => { const hit = hits(toDots(e))[0]; if (hit) { select(hit.id); const f = hit.type === 'text' ? $('#itText') : hit.type === 'emoji' ? $('#itEmoji') : hit.type === 'qr' ? $('#itQr') : null; if (f) { selectTab('design'); f.focus(); f.select && f.select(); } } });
+
+function select(id) {
+  selId = id;
+  updateOverlay(); fillInspector();
+}
+
+document.addEventListener('keydown', e => {
+  const typing = e.target.closest && e.target.closest('input, textarea, select, [contenteditable]');
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && !typing && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && !typing && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if (typing) return;
+  const it = sel(); if (!it) return;
+  if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); act('duplicate'); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); act('delete'); return; }
+  if (e.key === 'Escape') { select(null); return; }
+  const step = e.shiftKey ? 8 : 1, mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (mv) { e.preventDefault(); it.cx = clamp(it.cx + mv[0], 0, W()); it.cy = clamp(it.cy + mv[1], 0, H()); updateOverlay(); scheduleRender(); commitSoon(); }
+});
+
+/* ---------- adding things ---------- */
+function addItem(it, at) {
+  if (at) { it.cx = clamp(at.x, 0, W()); it.cy = clamp(at.y, 0, H()); }
+  doc.items.push(it); select(it.id); scheduleRender(); commit();
+  return it;
+}
+function addText(text, at) {
+  const w = W(), h = H(), it = newItem('text', { text: text || 'Text' });
+  if (doc.items.length) { it.w = Math.round(w * 0.5); it.h = Math.round(h * 0.45); }
+  addItem(it, at);
+  if (!text) { selectTab('design'); const f = $('#itText'); f.focus(); f.select(); }
+}
+function addEmoji(ch, at) { addItem(newItem('emoji', { text: ch }), at); }
+function addShape(kind, at) {
+  const w = W(), h = H();
+  const presets = {
+    box: { w: w * 0.5, h: h * 0.55, radius: 3, stroke: 3 },
+    frame: { w: w - 6, h: h - 6, radius: 14, stroke: 3, cx: w / 2, cy: h / 2 },
+    line: { fill: true, w: w * 0.8, h: 3, radius: 0 },
+    block: { fill: true, w: w * 0.6, h: h * 0.5, radius: 6 },
+    circle: { w: h * 0.6, h: h * 0.6, radius: 999, stroke: 3 },
+  };
+  const it = newItem('rect', presets[kind] || presets.box);
+  if (kind === 'frame') { doc.items.unshift(it); select(it.id); scheduleRender(); commit(); return; }
+  addItem(it, at);
+}
+function addImageSrc(id, src) {
+  if (images.has(id)) return images.get(id);
+  const el = new Image(); el.onload = () => scheduleRender(); el.src = src;
+  const rec = { src, el }; images.set(id, rec); return rec;
+}
+async function importImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const el = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('That file is not an image this browser can read.')); i.src = url; });
+    const max = 600, k = Math.min(1, max / Math.max(el.naturalWidth, el.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(el.naturalWidth * k)); c.height = Math.max(1, Math.round(el.naturalHeight * k));
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(el, 0, 0, c.width, c.height);
+    let src = c.toDataURL('image/png'); if (src.length > 350000) src = c.toDataURL('image/jpeg', 0.85);
+    const id = 'img_' + uid(); addImageSrc(id, src);
+    return { id, w: c.width, h: c.height };
+  } finally { URL.revokeObjectURL(url); }
+}
+async function addImageFile(file, at) {
+  try {
+    const im = await importImage(file);
+    const w = W(), h = H(), k = Math.min((w * 0.7) / im.w, (h - 12) / im.h);
+    addItem(newItem('image', { img: im.id, w: Math.round(im.w * k), h: Math.round(im.h * k) }), at);
+  } catch (e) { stageMsg(e.message, 'bad', 6000); }
+}
+
+$$('[data-add]').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.add;
+  if (k === 'text') addText('');
+  else if (k === 'image') { $('#fileImg').dataset.mode = 'add'; $('#fileImg').click(); }
+  else if (k === 'qr') { const h = H(); const it = newItem('qr', { w: h - 16, h: h - 16 }); if (doc.items.length) it.cx = 8 + it.w / 2; addItem(it); selectTab('design'); const f = $('#itQr'); f.focus(); f.select(); }
+}));
+$('#fileImg').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  if (e.target.dataset.mode === 'replace' && sel() && sel().type === 'image') {
+    try { const im = await importImage(f); const it = sel(); const k = Math.min(it.w / im.w, it.h / im.h); it.img = im.id; it.w = Math.round(im.w * k); it.h = Math.round(im.h * k); afterDocChange(); commit(); } catch (err) { stageMsg(err.message, 'bad', 6000); }
+  } else addImageFile(f);
+});
+
+/* drawers */
+function toggleDrawer(name, force) {
+  for (const d of ['emoji', 'shapes']) {
+    const open = d === name ? (force ?? $(`#drawer-${d}`).hidden) : false;
+    $(`#drawer-${d}`).hidden = !open;
+    $(`[data-drawer="${d}"]`).setAttribute('aria-pressed', String(open));
+  }
+  if (name && !$(`#drawer-${name}`).hidden) selectTab('design');
+}
+$$('[data-drawer]').forEach(b => b.addEventListener('click', () => toggleDrawer(b.dataset.drawer)));
+$$('[data-close-drawer]').forEach(b => b.addEventListener('click', () => toggleDrawer(null)));
+
+/* palette: tap to add, or drag (mouse and pen) onto the label */
+const groups = $('#emojiGroups');
+for (const [name, list] of EMOJI_GROUPS) {
+  const g = document.createElement('div'); g.className = 'palette-group';
+  const l = document.createElement('span'); l.className = 'lab'; l.textContent = name;
+  const p = document.createElement('div'); p.className = 'palette';
+  for (const ch of list) { const b = document.createElement('button'); b.type = 'button'; b.textContent = ch; b.dataset.emoji = ch; b.setAttribute('aria-label', 'Add ' + ch); p.append(b); }
+  g.append(l, p); groups.append(g);
+}
+function dragSource(container, selector, onDrop, ghostOf) {
+  container.addEventListener('pointerdown', e => {
+    const b = e.target.closest(selector); if (!b) return;
+    if (e.pointerType === 'touch') return; // touch uses tap-to-add, so the drawer still scrolls
+    e.preventDefault();
+    const start = { x: e.clientX, y: e.clientY }; let ghost = null;
+    const move = ev => {
+      if (!ghost && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 6) { ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.innerHTML = ghostOf(b); document.body.append(ghost); }
+      if (ghost) { ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px'; document.body.classList.toggle('dropping', overOverlay(ev)); }
+    };
+    const up = ev => {
+      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
+      document.body.classList.remove('dropping');
+      if (ghost) { ghost.remove(); if (overOverlay(ev)) onDrop(b, toDots(ev)); }
+      else onDrop(b, null);
+    };
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+  });
+  container.addEventListener('click', e => { const b = e.target.closest(selector); if (b && e.detail === 0) onDrop(b, null); }); // keyboard
+  container.addEventListener('pointerup', e => { const b = e.target.closest(selector); if (b && e.pointerType === 'touch') onDrop(b, null); });
+}
+const overOverlay = ev => { const r = overlay.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom; };
+dragSource(groups, '[data-emoji]', (b, at) => addEmoji(b.dataset.emoji, at), b => b.dataset.emoji);
+dragSource($('#shapeList'), '[data-shape]', (b, at) => addShape(b.dataset.shape, at), b => b.querySelector('svg').outerHTML);
+$('#btnEmojiCustom').addEventListener('click', () => { const v = $('#emojiCustom').value.trim(); if (v) { addEmoji(v); $('#emojiCustom').value = ''; } });
+$('#emojiCustom').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btnEmojiCustom').click(); });
+
+/* files and text dropped or pasted onto the label */
+const tape = $('#tape');
+['dragenter', 'dragover'].forEach(t => tape.addEventListener(t, e => { e.preventDefault(); document.body.classList.add('dropping'); }));
+['dragleave', 'drop'].forEach(t => tape.addEventListener(t, () => document.body.classList.remove('dropping')));
+tape.addEventListener('drop', e => {
+  e.preventDefault();
+  const at = overOverlay(e) ? toDots(e) : null, dt = e.dataTransfer;
+  const file = [...(dt.files || [])].find(f => f.type.startsWith('image/'));
+  if (file) return addImageFile(file, at);
+  const text = dt.getData('text/plain');
+  if (text) addText(text.trim().slice(0, 200), at);
+});
+document.addEventListener('paste', e => {
+  if (e.target.closest && e.target.closest('input, textarea')) return;
+  const items = [...(e.clipboardData ? e.clipboardData.items : [])];
+  const img = items.find(i => i.type.startsWith('image/'));
+  if (img) { e.preventDefault(); addImageFile(img.getAsFile()); return; }
+  const text = e.clipboardData && e.clipboardData.getData('text/plain');
+  if (text) { e.preventDefault(); addText(text.trim().slice(0, 200)); }
+});
+
+/* ---------- inspector ---------- */
+const TYPE_NAMES = { text: 'Text', emoji: 'Emoji', image: 'Image', qr: 'QR code', rect: 'Shape' };
+const fontSel = $('#itFont');
+for (const [k, f] of Object.entries(FONTS)) { const o = document.createElement('option'); o.value = k; o.textContent = f.name; fontSel.append(o); }
+function fillInspector() {
+  const it = sel(), box = $('#insp');
+  box.hidden = !it;
+  if (!it) return;
+  $('#inspTitle').textContent = TYPE_NAMES[it.type] || 'Item';
+  $$('[data-for]', box).forEach(g => { g.hidden = !g.dataset.for.split(' ').includes(it.type); });
+  $$('[data-p]', box).forEach(el => {
+    const v = it[el.dataset.p];
+    if (el.type === 'radio') el.checked = String(v) === el.value;
+    else if (el.type === 'checkbox') el.checked = !!v;
+    else if (el !== document.activeElement) el.value = v ?? '';
+  });
+  if (it.type === 'qr') { const q = qrFor(it.data), n = q && q !== 'toolong' ? q.getModuleCount() : 0, mod = n ? Math.floor(Math.min(it.w, it.h) / n) : 0;
+    $('#qrNote').textContent = !q ? 'The QR code library didn’t load. Check the internet connection and reload the page.' : q === 'toolong' ? 'That is too long for a QR code.' : (mod < 2 ? 'This QR code is too dense to scan reliably. Make it bigger or shorten the text.' : `Each square is ${mod} dots. Phones scan it best at least 10 mm across.`); }
+}
+$$('#insp [data-p]').forEach(el => {
+  const ev = (el.type === 'radio' || el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+  el.addEventListener(ev, () => {
+    const it = sel(); if (!it) return;
+    const p = el.dataset.p;
+    if (el.type === 'radio') { if (!el.checked) return; it[p] = el.value; }
+    else if (el.type === 'checkbox') it[p] = el.checked;
+    else if (el.type === 'range' || el.type === 'number') it[p] = +el.value;
+    else it[p] = el.value;
+    if (p === 'data') fillInspector();
+    updateOverlay(); scheduleRender(); commitSoon();
+  });
+});
+function act(name) {
+  const it = sel(); const w = W(), h = H();
+  if (name === 'date') { const ta = $('#itText'); const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s; ta.setRangeText(todayStr(), s, e, 'end'); ta.dispatchEvent(new Event('input')); ta.focus(); return; }
+  if (!it) return;
+  const i = doc.items.indexOf(it);
+  if (name === 'delete') { doc.items.splice(i, 1); selId = null; }
+  else if (name === 'duplicate') { const c = { ...it, id: uid(), cx: clamp(it.cx + 10, 0, w), cy: clamp(it.cy + 6, 0, h) }; doc.items.splice(i + 1, 0, c); selId = c.id; }
+  else if (name === 'front') { doc.items.splice(i, 1); doc.items.push(it); }
+  else if (name === 'back') { doc.items.splice(i, 1); doc.items.unshift(it); }
+  else if (name === 'centerH') it.cx = w / 2;
+  else if (name === 'centerV') it.cy = h / 2;
+  else if (name === 'rot0') it.rot = 0;
+  else if (name === 'rot90') it.rot = (((it.rot || 0) + 90 + 180) % 360) - 180;
+  else if (name === 'replace') { $('#fileImg').dataset.mode = 'replace'; $('#fileImg').click(); return; }
+  afterDocChange(); commit();
+}
+$$('#insp [data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act)));
+
+/* label card */
+function fillLabelCard() {
+  $('#docName').value = doc.name || '';
+  const std = ['30', '40', '50'].includes(String(doc.length));
+  $$('input[name="docLen"]').forEach(r => { r.checked = std ? r.value === String(doc.length) : r.value === 'custom'; });
+  $('#docLenCustom').hidden = std; $('#docLenCustom').value = doc.length;
+  $('#docInvert').checked = !!doc.invert;
+}
+function setLength(mm) {
+  const oldW = W(); doc.length = clamp(Math.round(+mm || 30), 10, 200); const k = W() / oldW;
+  for (const it of doc.items) it.cx *= k; // keep things in the same place relative to the label
+  afterDocChange(); commit();
+}
+$$('input[name="docLen"]').forEach(r => r.addEventListener('change', () => { if (!r.checked) return; if (r.value === 'custom') { $('#docLenCustom').hidden = false; $('#docLenCustom').focus(); } else setLength(+r.value); }));
+$('#docLenCustom').addEventListener('change', e => setLength(e.target.value));
+$('#docInvert').addEventListener('change', e => { doc.invert = e.target.checked; scheduleRender(); commit(); });
+$('#docName').addEventListener('input', e => { doc.name = e.target.value; commitSoon(); });
+const tplBox = $('#templates');
+for (const t of TEMPLATES) {
+  const b = document.createElement('button'); b.type = 'button'; b.innerHTML = `<span></span><small></small>`;
+  b.firstChild.textContent = t.name; b.lastChild.textContent = t.hint;
+  b.addEventListener('click', () => { doc.items = t.make(); doc.savedId = null; doc.name = ''; selId = (doc.items.find(i => i.type === 'text') || doc.items[0]).id; afterDocChange(); commit(); });
+  tplBox.append(b);
+}
+{ const b = document.createElement('button'); b.type = 'button'; b.innerHTML = '<span>Blank</span><small>Start empty</small>'; b.addEventListener('click', () => { doc.items = []; doc.savedId = null; doc.name = ''; selId = null; afterDocChange(); commit(); }); tplBox.append(b); }
+$('#btnShowImage').addEventListener('click', () => { if (!last) return; $('#imgOut').src = bitsToCanvas(last, '#ffffff', '#000000').toDataURL('image/png'); $('#imgDlg').showModal(); });
+
+function afterDocChange() { fitCache.clear(); fillInspector(); fillLabelCard(); updateOverlay(); scheduleRender(); }
+
+$('#btnUndo').addEventListener('click', undo);
+$('#btnRedo').addEventListener('click', redo);
+
+/* ---------- messages ---------- */
+let stageTimer = 0;
+function stageMsg(text, tone, ms = 0, action = null) {
+  const el = $('#stageMsg'); clearTimeout(stageTimer);
+  if (!text) { el.hidden = true; return; }
+  el.innerHTML = ''; el.dataset.tone = tone || '';
+  const t = document.createElement('span'); t.className = 'txt'; t.textContent = text; el.append(t);
+  if (action) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small'; b.textContent = action.label; b.addEventListener('click', () => { el.hidden = true; action.fn(); }); el.append(b); }
+  el.hidden = false;
+  if (ms) stageTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+/* ---------- saved labels ---------- */
+const localStore = {
+  read() { try { return JSON.parse(localStorage.getItem('labelbench.saved') || '[]'); } catch { return []; } },
+  async list() { return this.read().sort((a, b) => b.updated - a.updated); },
+  async put(id, rec) { const all = this.read().filter(r => r.id !== id); all.push({ ...rec, id, updated: Date.now() }); try { localStorage.setItem('labelbench.saved', JSON.stringify(all)); } catch { throw new Error('This browser’s storage is full. Delete some saved labels, or use smaller images.'); } },
+  async del(id) { localStorage.setItem('labelbench.saved', JSON.stringify(this.read().filter(r => r.id !== id))); },
+};
+const bridgeStore = {
+  async list() { const r = await bridgeJSON('api/labels'); return r.labels || []; },
+  async put(id, rec) { await bridgeJSON('api/labels/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(rec), headers: { 'Content-Type': 'application/json' } }); },
+  async del(id) { await bridgeJSON('api/labels/' + encodeURIComponent(id), { method: 'DELETE' }); },
+};
+const store = () => bridge.ok ? bridgeStore : localStore;
+function thumbOf(r) { const c = bitsToCanvas(r, '#ffffff', '#111111'); return c.toDataURL('image/png'); }
+function firstText() { const t = doc.items.find(i => i.type === 'text' && String(i.text).trim()); return t ? String(t.text).split('\n')[0].trim().slice(0, 40) : ''; }
+async function saveLabel() {
+  if (!last) return;
+  const id = doc.savedId || uid();
+  const rec = { name: doc.name.trim() || firstText() || 'Untitled label', thumb: thumbOf(last), design: serializeDesign() };
+  try {
+    await store().put(id, rec); doc.savedId = id; saveDraft();
+    stageMsg(`Saved “${rec.name}” ${bridge.ok ? 'to the print server' : 'in this browser'}.`, 'ok', 3500);
+    if (!$('#tab-saved').hidden) renderSaved();
+  } catch (e) { stageMsg('Could not save: ' + e.message, 'bad', 7000); }
+}
+$('#btnSave').addEventListener('click', saveLabel);
+async function renderSaved() {
+  const grid = $('#savedGrid');
+  $('#savedWhere').textContent = bridge.ok ? 'Saved on the print server, so everyone who uses it sees the same labels.' : 'Saved in this browser only. When the print server is available, labels are saved there instead.';
+  let list = [];
+  try { list = await store().list(); } catch (e) { grid.innerHTML = ''; const p = document.createElement('p'); p.className = 'msg'; p.dataset.tone = 'bad'; p.textContent = 'Could not load saved labels: ' + e.message; grid.append(p); return; }
+  grid.innerHTML = '';
+  if (!list.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'No saved labels yet. Design one, then tap Save above the label.'; grid.append(d); return; }
+  for (const rec of list) {
+    const card = document.createElement('div'); card.className = 'saved-card';
+    const th = document.createElement('button'); th.type = 'button'; th.className = 'thumb'; th.title = 'Open in the editor';
+    const img = document.createElement('img'); img.alt = rec.name; img.src = rec.thumb || ''; th.append(img);
+    const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = rec.name;
+    const when = document.createElement('div'); when.className = 'when'; when.textContent = rec.updated ? new Date(rec.updated).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    const row = document.createElement('div'); row.className = 'row';
+    const bOpen = Object.assign(document.createElement('button'), { type: 'button', className: 'btn small', textContent: 'Open' });
+    const bPrint = Object.assign(document.createElement('button'), { type: 'button', className: 'btn small', textContent: 'Print' });
+    const bDel = Object.assign(document.createElement('button'), { type: 'button', className: 'btn ghost small danger', textContent: 'Delete' });
+    const open = () => { loadDesign(rec.design, rec.id); selectTab('design'); stageMsg(`Opened “${rec.name}”.`, 'ok', 2500); };
+    th.addEventListener('click', open); bOpen.addEventListener('click', open);
+    bPrint.addEventListener('click', () => { loadDesign(rec.design, rec.id); printNow(); });
+    let armed = false;
+    bDel.addEventListener('click', async () => {
+      if (!armed) { armed = true; bDel.textContent = 'Tap again to delete'; setTimeout(() => { armed = false; bDel.textContent = 'Delete'; }, 3000); return; }
+      try { await store().del(rec.id); if (doc.savedId === rec.id) doc.savedId = null; renderSaved(); } catch (e) { stageMsg('Could not delete: ' + e.message, 'bad', 6000); }
+    });
+    row.append(bOpen, bPrint, bDel);
+    card.append(th, nm, when, row); grid.append(card);
+  }
+}
+
+/* ---------- print server (the bridge) ---------- */
+const bridge = { ok: false, info: null, printer: null, checking: false, error: '' };
+function bridgeHref(path) { const base = String(P.bridgeUrl || '').trim().replace(/\/+$/, ''); return base ? `${base}/${path}` : path; }
+async function bridgeFetch(path, opts = {}, ms = 40000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  const headers = { ...(opts.headers || {}) };
+  if (P.bridgeToken) headers['X-Label-Token'] = P.bridgeToken;
+  try { return await fetch(bridgeHref(path), { ...opts, headers, signal: ctl.signal, cache: 'no-store' }); }
+  finally { clearTimeout(t); }
+}
+async function bridgeJSON(path, opts, ms) {
+  const res = await bridgeFetch(path, opts, ms);
+  let body = null; try { body = await res.json(); } catch { throw new Error(`The print server sent an unexpected reply (HTTP ${res.status}).`); }
+  if (!res.ok || body.ok === false) { const e = new Error(body.error || `HTTP ${res.status}`); e.code = body.code; throw e; }
+  return body;
+}
+async function detectBridge(probe = true) {
+  bridge.checking = true; renderRoute();
+  try {
+    bridge.info = await bridgeJSON('api/status?probe=0', {}, 5000); bridge.ok = true; bridge.error = '';
+  } catch (e) { bridge.ok = false; bridge.info = null; bridge.printer = null; bridge.error = e.code === 'token' ? 'The print server needs an access token. Add it under Print server settings.' : ''; }
+  bridge.checking = false; renderRoute();
+  if (bridge.ok && probe) checkBridgePrinter(false);
+  if (!$('#tab-saved').hidden) renderSaved();
+}
+async function checkBridgePrinter(fresh) {
+  if (!bridge.ok) return;
+  bridge.checking = true; renderRoute();
+  try { const r = await bridgeJSON(`api/status?probe=1${fresh ? '&fresh=1' : ''}`, {}, 90000); bridge.printer = r.printer || null; }
+  catch (e) { bridge.printer = { reachable: false, error: e.message }; }
+  bridge.checking = false; renderRoute();
+}
+$('#btnBridgeCheck').addEventListener('click', async () => { if (!bridge.ok) await detectBridge(false); await checkBridgePrinter(true); });
+$('#btnBridgeSave').addEventListener('click', () => { P.bridgeUrl = $('#bridgeUrl').value.trim(); P.bridgeToken = $('#bridgeToken').value.trim(); savePrefs(); detectBridge(true); });
+
+/* ---------- this device's Bluetooth (Web Serial) ---------- */
+const SPP = '00001101-0000-1000-8000-00805f9b34fb';
+const BASE = '-0000-1000-8000-00805f9b34fb';
+const full16 = n => '0000' + n.toString(16).padStart(4, '0') + BASE;
+const short = u => (u && u.startsWith('0000') && u.endsWith(BASE)) ? '0x' + u.slice(4, 8) : u;
+const nameOf = u => ({ '0x1101': 'Serial port', '0x2902': 'Notify switch' })[short(u)] || '';
+const phoneCapable = () => !!navigator.serial && window.isSecureContext && !embedded;
+let conn = null, printing = false, idleTimer = 0;
+async function openPort(port) {
+  setPill('busy', 'Connecting…');
+  let opened = false, lastErr = null;
+  for (let attempt = 1; attempt <= 3 && !opened; attempt++) {
+    try { await port.open({ baudRate: 115200 }); opened = true; }
+    catch (e) { lastErr = e; if (e.name === 'InvalidStateError') { opened = true; break; } logLine('err', `Open attempt ${attempt} failed: ${e.message}`); if (attempt < 3) await sleep(1500); }
+  }
+  if (!opened) { renderRoute(); throw new Error(`Could not open the connection (${lastErr && lastErr.message}). Switch the printer off and on, close the Kodak app, then try again.`); }
+  const writer = port.writable.getWriter();
+  let reader = null;
+  const c = { kind: 'serial', name: 'Bluetooth printer', info: {}, writer, rxText: '', waiters: [], quiet: false, timer: 0, port };
+  c.write = async (bytes, onP) => {
+    const size = Math.max(20, +D.chunk || 255), delay = Math.max(0, +D.delay || 0);
+    for (let off = 0; off < bytes.length; off += size) { await writer.write(bytes.slice(off, off + size)); onP && onP(Math.min(1, (off + size) / bytes.length)); if (delay) await sleep(delay); }
+  };
+  c.close = async () => { clearInterval(c.timer); for (const w of c.waiters.splice(0)) w.resolve(null); try { if (reader) await reader.cancel(); } catch {} try { writer.releaseLock(); } catch {} try { await port.close(); } catch {} };
+  conn = c;
+  (async () => {
+    while (port.readable && conn === c) {
+      reader = port.readable.getReader();
+      try { for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) serialRx(c, value); } }
+      catch {} finally { try { reader.releaseLock(); } catch {} }
+    }
+  })();
+  logLine('info', 'Connected over Bluetooth.');
+  renderRoute();
+  await pollStatus(c, false);
+  c.timer = setInterval(() => { if (conn === c && !printing) pollStatus(c, true); }, 8000);
+  bumpIdle(); renderRoute();
+  return c;
+}
+async function ensurePhone(interactive) {
+  if (conn) return conn;
+  if (!phoneCapable()) throw new Error('This browser cannot reach Bluetooth printers. Use Chrome 137 or later on Android, or Chrome or Edge on a computer, over https.');
+  let port = null;
+  try { const ports = await navigator.serial.getPorts(); port = ports.find(p => { try { return !!p.getInfo().bluetoothServiceClassId; } catch { return false; } }) || ports[0] || null; } catch {}
+  if (!port) {
+    if (!interactive) throw new Error('Connect the printer first.');
+    try { port = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: [SPP] }); }
+    catch (e) { if (e.name === 'NotFoundError') throw new Error('No printer chosen. If it wasn’t listed, pair it in your Bluetooth settings first.'); throw e; }
+  }
+  return openPort(port);
+}
+async function disconnectPhone(reason) {
+  const c = conn; conn = null; clearTimeout(idleTimer);
+  if (c) { try { await c.close(); } catch {} logLine('info', reason || 'Disconnected.'); }
+  renderRoute();
+}
+function bumpIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (conn && !printing) disconnectPhone('Disconnected after two idle minutes, so the printer is free for others.'); }, 120000); }
+function serialRx(c, u8) {
+  const printable = u8.every(b => b >= 0x20 && b < 0x7f);
+  if (!(c.quiet && printable)) logLine('rx', `${hex(u8, 64)}  |${ascii(u8.subarray(0, 64))}|${u8.length === 1 && u8[0] === 0xaa ? '  label finished' : ''}`);
+  if (u8.includes(0xaa)) settle(c, 'done', true);
+  if (printable) {
+    c.rxText = (c.rxText + String.fromCharCode(...u8)).slice(-400);
+    const m = /([A-Za-z0-9]+)\|([^|]+)\|([0-9A-Fa-f:]{17})\|([0-9A-Fa-f:]{17})\|([^|]+)\|([^|]+)\|(\d+)\|([^|]+)\|(\d+mm)/.exec(c.rxText);
+    if (m) {
+      c.rxText = '';
+      const st = { name: m[2], firmware: m[5], battery: +m[7], state: m[8].trim() };
+      if (c.info.state !== st.state) logLine('info', `Printer status: ${st.state}, battery ${st.battery}%`);
+      c.name = st.name; c.info = st; c.quiet = false; renderRoute(); settle(c, 'status', st);
+    }
+  }
+}
+function settle(c, type, value) { const ws = c.waiters.filter(w => w.type === type); c.waiters = c.waiters.filter(w => w.type !== type); for (const w of ws) w.resolve(value); }
+function waitFor(c, type, ms) {
+  return new Promise(resolve => {
+    const w = { type, resolve: v => { clearTimeout(t); resolve(v); } };
+    const t = setTimeout(() => { c.waiters = c.waiters.filter(x => x !== w); resolve(null); }, ms);
+    c.waiters.push(w);
+  });
+}
+async function pollStatus(c, quiet) {
+  if (!c) return null;
+  c.quiet = quiet; c.rxText = '';
+  const p = waitFor(c, 'status', 2500);
+  try { await c.writer.write(Uint8Array.of(0x10, 0xff, 0x70)); } catch { c.quiet = false; return null; }
+  const st = await p; c.quiet = false; return st;
+}
+$('#btnPhoneConnect').addEventListener('click', async () => { try { await ensurePhone(true); } catch (e) { stageMsg(e.message, 'bad', 8000); } });
+$('#btnPhoneDisconnect').addEventListener('click', () => disconnectPhone());
+
+/* ---------- print jobs (this device's Bluetooth) ---------- */
+function toRaster(bits, w, h) {
+  const rot = D.rotation, inv = D.invertBits ? 1 : 0, mir = !!D.mirror;
+  let cols, rows, get;
+  if (rot === 'none') { cols = w; rows = h; get = (x, y) => bits[y * w + x]; }
+  else if (rot === 'ccw') { cols = h; rows = w; get = (x, y) => bits[x * w + (w - 1 - y)]; }
+  else { cols = h; rows = w; get = (x, y) => bits[(h - 1 - x) * w + y]; }
+  const bpl = Math.ceil(cols / 8), data = new Uint8Array(bpl * rows);
+  for (let y = 0; y < rows; y++) { const o = y * bpl; for (let x = 0; x < cols; x++) if (get(mir ? cols - 1 - x : x, y) ^ inv) data[o + (x >> 3)] |= 0x80 >> (x & 7); }
+  return { bpl, lines: rows, cols, data };
+}
+function parseHex(str, v = {}) {
+  const s = String(str || '').replace(/\{(\w+)\}/g, (m, k) => { if (!(k in v)) throw new Error(`Unknown placeholder ${m}.`); return ' ' + v[k] + ' '; }).replace(/0x/gi, ' ');
+  if (/[^0-9a-f\s,]/i.test(s)) throw new Error('Use hex bytes only, for example 1b 40.');
+  const out = [];
+  for (const t of s.split(/[\s,]+/).filter(Boolean)) {
+    if (t.length === 1) { out.push(parseInt(t, 16)); continue; }
+    if (t.length % 2) throw new Error(`"${t}" has an odd number of hex digits.`);
+    for (let i = 0; i < t.length; i += 2) out.push(parseInt(t.slice(i, i + 2), 16));
+  }
+  return Uint8Array.from(out);
+}
+const le16 = n => `${h2(n)} ${h2(n >> 8)}`;
+const jobVars = (ras, copies) => ({ bpl: h2(ras.bpl), bpl16: le16(ras.bpl), lines: h2(ras.lines), lines16: le16(ras.lines), lines16be: `${h2(ras.lines >> 8)} ${h2(ras.lines)}`, dots16: le16(ras.cols), copies: h2(copies) });
+function buildJob(r, copies) {
+  const ras = toRaster(r.bits, r.W, r.H), v = jobVars(ras, copies);
+  const shift = Math.round((+D.offsetMm || 0) * DPMM);
+  if (shift && D.rotation !== 'none') {
+    const d = new Uint8Array(ras.data.length), s = Math.min(Math.abs(shift), ras.lines) * ras.bpl;
+    if (shift > 0) d.set(ras.data.subarray(0, ras.data.length - s), s); else d.set(ras.data.subarray(s));
+    ras.data = d;
+  }
+  const pre = parseHex(D.prefix, v), suf = parseHex(D.suffix, v), parts = [];
+  for (let c = 0; c < copies; c++) {
+    parts.push(pre);
+    if (D.body === 'gsv0') parts.push(Uint8Array.of(0x1d, 0x76, 0x30, 0x00, ras.bpl & 255, ras.bpl >> 8, ras.lines & 255, ras.lines >> 8), ras.data);
+    else parts.push(ras.data);
+    parts.push(suf);
+  }
+  return { bytes: concat(parts), ras };
+}
+function updateJobInfo() {
+  const el = $('#jobInfo'); if (!last || !el) return;
+  try { const { bytes, ras } = buildJob(last, 1); el.textContent = `One label is ${bytes.length.toLocaleString()} bytes (${ras.lines} lines of ${ras.bpl} bytes), starting ${hex(bytes, 12)}`; el.dataset.tone = ''; }
+  catch (e) { el.textContent = e.message; el.dataset.tone = 'bad'; }
+}
+async function printViaPhone(r, copies, label) {
+  const c = conn; if (!c) throw new Error('Not connected.');
+  const job = buildJob(r, 1).bytes, btn = $('#btnPrint');
+  let done = 0, unconfirmed = 0;
+  for (let i = 0; i < copies; i++) {
+    const st = await pollStatus(c, true);
+    if (st && st.state !== 'ready') throw new Error(`The printer says “${st.state}”, so nothing was sent. Check the label roll and the lid.`);
+    logLine('tx', `${label}${copies > 1 ? ` ${i + 1}/${copies}` : ''}: ${job.length} bytes`);
+    const fin = waitFor(c, 'done', 20000);
+    await c.write(job, p => { btn.textContent = copies > 1 ? `${i + 1}/${copies} · ${Math.round(p * 100)}%` : Math.round(p * 100) + '%'; });
+    btn.textContent = 'Printing…';
+    if (!(await fin)) { unconfirmed++; logLine('err', 'The printer did not report the label as finished within 20 seconds.'); }
+    done++;
+  }
+  bumpIdle();
+  return { done, unconfirmed };
+}
+
+/* ---------- print routing ---------- */
+function activeRoute() {
+  const phoneOK = phoneCapable();
+  if (P.route === 'bridge') return bridge.ok ? 'bridge' : null;
+  if (P.route === 'phone') return phoneOK ? 'phone' : null;
+  if (conn) return 'phone';
+  return bridge.ok ? 'bridge' : (phoneOK ? 'phone' : null);
+}
+function bitsToPng(r) { return new Promise(res => bitsToCanvas(r, '#ffffff', '#000000').toBlob(res, 'image/png')); }
+async function printBits(r, copies, label) {
+  if (printing) return;
+  const route = activeRoute();
+  if (!route) { stageMsg(noRouteText(), 'warn', 9000, { label: 'Printer settings', fn: () => selectTab('printer') }); return; }
+  const btn = $('#btnPrint'); printing = true; btn.disabled = true; setPill('busy', 'Printing…');
+  try {
+    if (route === 'phone') {
+      btn.textContent = 'Connecting…';
+      await ensurePhone(true);
+      const { done, unconfirmed } = await printViaPhone(r, copies, label);
+      stageMsg(unconfirmed ? `Sent ${done} label${done > 1 ? 's' : ''}, but the printer did not confirm ${unconfirmed}. If it stalls, switch it off and on.` : `Printed ${done} label${done > 1 ? 's' : ''}.`, unconfirmed ? 'warn' : 'ok', 6000);
+    } else {
+      btn.textContent = 'Sending…';
+      const png = await bitsToPng(r);
+      const res = await bridgeJSON(`api/print?copies=${copies}&offset_mm=${encodeURIComponent(+D.offsetMm || 0)}`, { method: 'POST', body: png, headers: { 'Content-Type': 'image/png' } }, 180000);
+      if (res.printer) bridge.printer = { reachable: true, ...res.printer };
+      stageMsg(`Printed ${res.printed} label${res.printed > 1 ? 's' : ''} through the print server.`, 'ok', 6000);
+    }
+  } catch (e) {
+    logLine('err', e.message);
+    const fallback = route === 'bridge' && phoneCapable() && ['unreachable', 'busy'].includes(e.code);
+    stageMsg((route === 'bridge' ? 'The print server could not print: ' : '') + e.message, 'bad', 12000,
+      fallback ? { label: 'Use this device instead', fn: () => { P.route = 'phone'; savePrefs(); fillPrefs(); renderRoute(); printNow(); } } : null);
+    if (route === 'bridge' && e.code) bridge.printer = { reachable: false, error: e.message, code: e.code };
+  } finally { printing = false; btn.disabled = false; btn.textContent = 'Print'; renderRoute(); }
+}
+async function printNow() {
+  const copies = clamp(Math.round(+$('#copies').value || 1), 1, 20);
+  if (activeRoute() === 'phone' && !conn) { try { await ensurePhone(true); } catch (e) { stageMsg(e.message, 'bad', 9000); return; } }
+  await ensureFonts(doc.items); last = renderDoc(); drawPreview(last);
+  if (!doc.items.length) { stageMsg('The label is empty. Add some text first.', 'warn', 4000); return; }
+  printBits(last, copies, 'Label');
+}
+$('#btnPrint').addEventListener('click', printNow);
+function noRouteText() {
+  if (P.route === 'bridge') return 'The print server is not reachable from this page. Check it is running, or choose another way to print.';
+  if (P.route === 'phone') return 'This browser cannot reach Bluetooth printers. Use Chrome on Android or a computer, over https.';
+  return 'There is no way to reach the printer from here: no print server was found, and this browser cannot use Bluetooth printers.';
+}
+
+function setPill(state, text) { $('#pill').dataset.state = state; $('#pillText').textContent = text; }
+function renderRoute() {
+  const route = activeRoute();
+  // header pill
+  if (printing) setPill('busy', 'Printing…');
+  else if (route === 'phone' && conn) setPill(conn.info.state && conn.info.state !== 'ready' ? 'warn' : 'on', `${conn.name}${conn.info.battery != null ? `, ${conn.info.battery}%` : ''}`);
+  else if (route === 'phone') setPill('off', 'This device, not connected');
+  else if (route === 'bridge') {
+    const p = bridge.printer;
+    if (bridge.checking && !p) setPill('busy', 'Print server, checking printer…');
+    else if (p && p.reachable) setPill(p.state === 'ready' ? 'on' : 'warn', `Print server, ${p.state}${p.battery != null ? `, ${p.battery}%` : ''}`);
+    else if (p) setPill('warn', 'Print server, printer not reachable');
+    else setPill('on', 'Print server');
+  } else setPill('off', 'No printer route');
+  // bridge card
+  const bi = $('#bridgeInfo'); bi.innerHTML = '';
+  const add = (dl, k, v) => { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; dl.append(dt, dd); };
+  if (!bridge.ok) add(bi, 'Bridge', bridge.checking ? 'Looking…' : (bridge.error || 'Not found from this page'));
+  else {
+    add(bi, 'Bridge', `Connected, version ${bridge.info.version}${bridge.info.fake ? ' (simulated printer)' : ''}`);
+    const p = bridge.printer;
+    add(bi, 'Printer', bridge.checking ? 'Checking…' : !p ? 'Not checked yet' : p.reachable ? `${p.name || 'M50'}, ${p.state}` : (p.error || 'Not reachable'));
+    if (p && p.reachable) { add(bi, 'Battery', p.battery + '%'); add(bi, 'Firmware', p.firmware || ''); }
+  }
+  // phone card
+  const pi = $('#phoneInfo'); pi.innerHTML = '';
+  if (!phoneCapable()) add(pi, 'Status', embedded ? 'Blocked in this embedded view' : (!window.isSecureContext ? 'Needs https' : 'Not supported in this browser'));
+  else if (conn) { add(pi, 'Status', `Connected to ${conn.name}`); if (conn.info.state) add(pi, 'Printer', conn.info.state); if (conn.info.battery != null) add(pi, 'Battery', conn.info.battery + '%'); }
+  else add(pi, 'Status', 'Not connected. Print connects automatically.');
+  $('#btnPhoneConnect').hidden = !!conn; $('#btnPhoneDisconnect').hidden = !conn; $('#btnPhoneConnect').disabled = !phoneCapable();
+  // route message
+  const rm = $('#routeMsg');
+  rm.textContent = route === 'bridge' ? 'Labels print through the print server.' : route === 'phone' ? 'Labels print from this device over Bluetooth.' : noRouteText();
+  rm.dataset.tone = route ? 'ok' : 'warn';
+}
+$('#pill').addEventListener('click', () => selectTab('printer'));
+
+/* ---------- calibration ---------- */
+function rulerLabel() {
+  const h = H(), mm = +doc.length || 30, w = Math.round(mm * DPMM);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const c = cv.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); c.fillStyle = '#000';
+  for (let m = 0; m <= mm; m++) {
+    const x = Math.min(w - 2, Math.round(m * DPMM)), len = m % 10 === 0 ? h : m % 5 === 0 ? h * 0.45 : h * 0.22;
+    c.fillRect(x, 0, 2, len); c.fillRect(x, h - Math.round(len * 0.5), 2, Math.round(len * 0.5));
+  }
+  c.font = `700 ${Math.round(h * 0.28)}px "IBM Plex Mono", ui-monospace, monospace`; c.textBaseline = 'middle';
+  for (let m = 10; m < mm; m += 10) c.fillText(String(m), Math.round(m * DPMM) + 5, h / 2);
+  c.fillText('0', 6, h / 2);
+  return { W: w, H: h, bits: binarize(c.getImageData(0, 0, w, h).data, w, h, 'threshold', 128) };
+}
+$('#btnRuler').addEventListener('click', () => printBits(rulerLabel(), 1, 'Ruler'));
+$('#btnTest').addEventListener('click', async () => {
+  const saved = doc; doc = { ...doc, invert: false, items: [newItem('rect', { w: W() - 4, h: H() - 4, radius: 0, stroke: 2 }), newItem('text', { text: 'TOP ↑\nABC 123' })] };
+  await ensureFonts(doc.items); const r = renderDoc(); doc = saved;
+  printBits(r, 1, 'Test label');
+});
+
+/* ---------- prefs and protocol fields ---------- */
+const presetSel = $('#preset');
+for (const [k, p] of Object.entries(PRESETS)) { const o = document.createElement('option'); o.value = k; o.textContent = p.name; presetSel.append(o); }
+function fillPrefs() {
+  for (const el of $$('[data-pref]')) { const v = P[el.dataset.pref]; if (el.type === 'radio') el.checked = String(v) === el.value; else if (el !== document.activeElement) el.value = v ?? ''; }
+  for (const el of $$('[data-k][data-obj="drv"]')) { const v = D[el.dataset.k]; if (el.type === 'radio') el.checked = String(v) === el.value; else if (el.type === 'checkbox') el.checked = !!v; else if (el !== document.activeElement) el.value = v ?? ''; }
+}
+const fill = fillPrefs; // used by the capture decoder
+for (const el of $$('[data-pref]')) {
+  if (el.id === 'bridgeUrl' || el.id === 'bridgeToken') continue; // saved with the button
+  el.addEventListener('change', () => { if (el.type === 'radio' && !el.checked) return; P[el.dataset.pref] = el.value; savePrefs(); renderRoute(); });
+}
+const DRV_SHAPE = ['prefix', 'body', 'suffix'];
+for (const el of $$('[data-k][data-obj="drv"]')) {
+  const ev = (el.tagName === 'SELECT' || el.type === 'radio' || el.type === 'checkbox') ? 'change' : 'input';
+  el.addEventListener(ev, () => {
+    const k = el.dataset.k;
+    if (el.type === 'radio') { if (!el.checked) return; D[k] = el.value; }
+    else if (el.type === 'checkbox') D[k] = el.checked;
+    else if (el.type === 'number') { if (el.value === '' || isNaN(+el.value)) return; D[k] = +el.value; }
+    else D[k] = el.value;
+    if (k === 'preset' && PRESETS[el.value] && PRESETS[el.value].prefix !== undefined) { const p = PRESETS[el.value]; Object.assign(D, { prefix: p.prefix, body: p.body, band: p.band, suffix: p.suffix }); fillPrefs(); }
+    else if (DRV_SHAPE.includes(k) && D.preset !== 'custom') { D.preset = 'custom'; presetSel.value = 'custom'; }
+    savePrefs();
+    if (k === 'headDots') { for (const it of doc.items) it.cy = clamp(it.cy, 0, H()); afterDocChange(); } else updateJobInfo();
+  });
+}
+
+/* ---------- console ---------- */
+const logEl = $('#log');
+const rxSeen = [];
+function logLine(kind, text) {
+  const ts = new Date().toTimeString().slice(0, 8);
+  const div = document.createElement('div'); div.className = kind;
+  div.textContent = `${ts} ${kind === 'tx' ? '→' : kind === 'rx' ? '←' : '·'} ${text}`;
+  logEl.append(div);
+  while (logEl.childElementCount > 400) logEl.firstChild.remove();
+  logEl.scrollTop = logEl.scrollHeight;
+  if (kind === 'rx') { rxSeen.push(text); if (rxSeen.length > 30) rxSeen.shift(); }
+}
+$('#btnClearLog').addEventListener('click', () => { logEl.innerHTML = ''; });
+$('#rawForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!conn) { logLine('err', 'Not connected over this device’s Bluetooth.'); return; }
+  let bytes;
+  try { const ras = last ? toRaster(last.bits, last.W, last.H) : { bpl: 14, lines: 0, cols: 112 }; bytes = parseHex($('#rawHex').value, jobVars(ras, 1)); } catch (err) { logLine('err', err.message); return; }
+  if (!bytes.length) return;
+  logLine('tx', hex(bytes, 64));
+  try { await conn.write(bytes); bumpIdle(); } catch (err) { logLine('err', err.message); }
+});
+
+/* ---------- capture decoding ---------- */
+function parseRecords(buf) {
+  const dv = new DataView(buf), u8 = new Uint8Array(buf), N = u8.length, recs = [];
+  if (N >= 16 && String.fromCharCode(...u8.subarray(0, 8)) === 'btsnoop\0') {
+    const dl = dv.getUint32(12);
+    if (dl !== 1001 && dl !== 1002) throw new Error(`This btsnoop file uses link type ${dl}; this page reads type 1002 (Android) and 1001.`);
+    let off = 16, t0 = null;
+    while (off + 24 <= N) {
+      const incl = dv.getUint32(off + 4), flags = dv.getUint32(off + 8), ts = dv.getBigUint64(off + 16); off += 24;
+      if (off + incl > N) break;
+      let data = u8.subarray(off, off + incl); off += incl;
+      if (t0 === null) t0 = ts;
+      const t = Number(ts - t0) / 1000, rx = (flags & 1) === 1;
+      let type;
+      if (dl === 1002) { if (!data.length) continue; type = data[0]; data = data.subarray(1); } else type = (flags & 2) ? (rx ? 4 : 1) : 2;
+      recs.push({ t, rx, type, data });
+    }
+    return { format: dl === 1002 ? 'Android btsnoop' : 'btsnoop (H1)', recs };
+  }
+  const ok = (len, off) => len >= 9 && len < 70000 && off + 4 + len <= N;
+  let le;
+  if (N >= 13 && ok(dv.getUint32(0, false), 0)) le = false;
+  else if (N >= 13 && ok(dv.getUint32(0, true), 0)) le = true;
+  else throw new Error('This is not a btsnoop or PacketLogger file.');
+  let off = 0, t0 = null;
+  while (off + 13 <= N) {
+    const len = dv.getUint32(off, le); if (!ok(len, off)) break;
+    const sec = le ? dv.getUint32(off + 8, true) : dv.getUint32(off + 4, false), usec = le ? dv.getUint32(off + 4, true) : dv.getUint32(off + 8, false);
+    const type = u8[off + 12], data = u8.subarray(off + 13, off + 4 + len); off += 4 + len;
+    const tt = sec * 1000 + usec / 1000; if (t0 === null) t0 = tt;
+    if (type === 2 || type === 3) recs.push({ t: tt - t0, rx: type === 3, type: 2, data });
+  }
+  return { format: 'Apple PacketLogger', recs };
+}
+const u128 = b => { const h = Array.from(b).reverse().map(h2).join(''); return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`; };
+const uuidFrom = b => b.length === 2 ? full16(b[0] | b[1] << 8) : b.length === 16 ? u128(b) : '';
+const propStr = p => [[2, 'read'], [4, 'write fast'], [8, 'write'], [16, 'notify'], [32, 'indicate']].filter(([m]) => p & m).map(([, s]) => s).join(', ');
+const hk = h => '0x' + h.toString(16).padStart(4, '0');
+const OPN = { 0x52: 'write-cmd', 0x12: 'write-req', 0x16: 'prepare-write', 0x1b: 'notify', 0x1d: 'indicate', 0x0b: 'read-rsp', 0x01: 'error' };
+
+function decodeCapture(buf) {
+  const { format, recs } = parseRecords(buf);
+  const cap = { format, recCount: recs.length, events: [], services: [], chars: new Map(), descs: new Map(), mtu: 0, sdp: new Set() };
+  const pend = new Map(), lastType = {}, lastRead = {};
+  const att = (pdu, rec) => {
+    if (!pdu.length) return;
+    const op = pdu[0], dir = rec.rx ? 'in' : 'out', H = () => pdu[1] | pdu[2] << 8;
+    switch (op) {
+      case 0x02: case 0x03: if (pdu.length >= 3) cap.mtu = Math.max(cap.mtu, H()); break;
+      case 0x08: if (pdu.length === 7) lastType[dir] = pdu[5] | pdu[6] << 8; else if (pdu.length === 21) lastType[dir] = -1; break;
+      case 0x09: {
+        const len = pdu[1], want = lastType[dir === 'in' ? 'out' : 'in'];
+        if (want !== 0x2803 || len < 7) break;
+        for (let i = 2; i + len <= pdu.length; i += len) { const v = pdu.subarray(i + 2, i + len); if (v.length === 5 || v.length === 19) cap.chars.set(v[1] | v[2] << 8, { uuid: uuidFrom(v.subarray(3)), props: v[0] }); }
+        break; }
+      case 0x11: { const len = pdu[1]; if (len < 6) break; for (let i = 2; i + len <= pdu.length; i += len) cap.services.push({ start: pdu[i] | pdu[i + 1] << 8, end: pdu[i + 2] | pdu[i + 3] << 8, uuid: uuidFrom(pdu.subarray(i + 4, i + len)) }); break; }
+      case 0x05: { const step = pdu[1] === 1 ? 4 : 18; for (let i = 2; i + step <= pdu.length; i += step) cap.descs.set(pdu[i] | pdu[i + 1] << 8, uuidFrom(pdu.subarray(i + 2, i + step))); break; }
+      case 0x0a: if (pdu.length >= 3) lastRead[dir] = H(); break;
+      case 0x0b: { const h = lastRead[dir === 'in' ? 'out' : 'in']; if (h != null) cap.events.push({ t: rec.t, dir, op: 'read-rsp', key: hk(h), handle: h, value: pdu.subarray(1) }); break; }
+      case 0x52: case 0x12: case 0x1b: case 0x1d: if (pdu.length >= 3) cap.events.push({ t: rec.t, dir, op: OPN[op], key: hk(H()), handle: H(), value: pdu.subarray(3) }); break;
+      case 0x16: if (pdu.length >= 5) cap.events.push({ t: rec.t, dir, op: OPN[op], key: hk(H()), handle: H(), value: pdu.subarray(5) }); break;
+      case 0x01: if (pdu.length >= 5) cap.events.push({ t: rec.t, dir, op: 'error', key: hk(pdu[2] | pdu[3] << 8), handle: pdu[2] | pdu[3] << 8, value: pdu.subarray(1) }); break;
+    }
+  };
+  const rfcomm = (p, rec) => {
+    if (p.length < 4) return false;
+    const addr = p[0], ctrl = p[1];
+    if ((ctrl & 0xef) !== 0xef || !(addr & 1)) return false;
+    let len, hdr;
+    if (p[2] & 1) { len = p[2] >> 1; hdr = 3; } else { if (p.length < 5) return false; len = (p[2] >> 1) | (p[3] << 7); hdr = 4; }
+    const dlci = addr >> 2;
+    if ((ctrl & 0x10) && dlci) hdr += 1;
+    if (hdr + len + 1 !== p.length) return false;
+    if (dlci && len) cap.events.push({ t: rec.t, dir: rec.rx ? 'in' : 'out', op: 'rfcomm', key: `RFCOMM ${dlci >> 1}`, handle: -1, value: p.subarray(hdr, hdr + len) });
+    return true;
+  };
+  // SDP: the phone looks up the printer's serial service before opening RFCOMM. The UUIDs it asks for are what Chrome must be told about.
+  const sdp = (p, rec) => {
+    if (p.length < 7 || rec.rx) return false;
+    const id = p[0], plen = p[3] << 8 | p[4];
+    if ((id !== 0x02 && id !== 0x06) || plen + 5 !== p.length) return false;
+    let i = 5, end;
+    if (p[i] === 0x35) { end = i + 2 + p[i + 1]; i += 2; } else if (p[i] === 0x36) { end = i + 3 + (p[i + 1] << 8 | p[i + 2]); i += 3; } else return false;
+    while (i < end && i < p.length) {
+      const t = p[i];
+      if (t === 0x19) { cap.sdp.add(full16(p[i + 1] << 8 | p[i + 2])); i += 3; }
+      else if (t === 0x1a) { const v = ((p[i + 1] << 24) >>> 0) + (p[i + 2] << 16) + (p[i + 3] << 8) + p[i + 4]; cap.sdp.add(v.toString(16).padStart(8, '0') + BASE); i += 5; }
+      else if (t === 0x1c) { const h = Array.from(p.subarray(i + 1, i + 17)).map(h2).join(''); cap.sdp.add(`${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`); i += 17; }
+      else break;
+    }
+    return true;
+  };
+  const l2 = (cid, payload, rec) => { if (cid === 4) att(payload, rec); else if (cid >= 0x40) { if (!rfcomm(payload, rec)) sdp(payload, rec); } };
+  for (const rec of recs) {
+    if (rec.type !== 2 || rec.data.length < 4) continue;
+    const d = rec.data, hf = d[0] | d[1] << 8, handle = hf & 0x0fff, pb = (hf >> 12) & 3, alen = d[2] | d[3] << 8;
+    const payload = d.subarray(4, 4 + alen), key = `${rec.rx ? 1 : 0}:${handle}`;
+    if (pb === 1) {
+      const p = pend.get(key); if (!p) continue;
+      const n = Math.min(payload.length, p.buf.length - p.got); p.buf.set(payload.subarray(0, n), p.got); p.got += n;
+      if (p.got >= p.buf.length) { pend.delete(key); l2(p.cid, p.buf.subarray(4), p.rec); }
+    } else {
+      if (payload.length < 4) continue;
+      const l2len = payload[0] | payload[1] << 8, cid = payload[2] | payload[3] << 8, total = l2len + 4;
+      if (payload.length >= total) l2(cid, payload.subarray(4, total), rec);
+      else { const buf = new Uint8Array(total); buf.set(payload); pend.set(key, { buf, got: payload.length, cid, rec }); }
+    }
+  }
+  return cap;
+}
+const isWrite = e => e.op === 'write-cmd' || e.op === 'write-req' || e.op === 'prepare-write' || (e.op === 'rfcomm' && e.dir === 'out');
+const capUuid = (cap, e) => e.handle >= 0 ? ((cap.chars.get(e.handle) || {}).uuid || cap.descs.get(e.handle) || '') : '';
+
+let cap = null, capSel = null, capStream = null, capJob = null;
+function capStatus(t, tone) { const el = $('#capStatus'); el.textContent = t; el.dataset.tone = tone || ''; el.hidden = !t; }
+function capRows() {
+  const m = new Map();
+  for (const e of cap.events) {
+    if (!m.has(e.key)) m.set(e.key, { key: e.key, uuid: capUuid(cap, e), outN: 0, outB: 0, inN: 0, inB: 0 });
+    const r = m.get(e.key);
+    if (e.dir === 'out') { r.outN++; r.outB += e.value.length; } else { r.inN++; r.inB += e.value.length; }
+  }
+  return [...m.values()].sort((a, b) => b.outB - a.outB || b.inB - a.inB);
+}
+function renderCapture() {
+  const rows = capRows();
+  capStatus(`${cap.fileName}: ${cap.format}, ${cap.recCount.toLocaleString()} packets, ${cap.events.length.toLocaleString()} data operations${cap.mtu ? `, MTU ${cap.mtu}` : ''}.`, cap.events.length ? 'ok' : 'warn');
+  if (!cap.events.length) { $('#capOut').hidden = true; capStatus(`${cap.fileName}: ${cap.format}, ${cap.recCount.toLocaleString()} packets, but no printer data inside. Make sure the snoop log was enabled before printing, then send the file to Claude.`, 'warn'); return; }
+  $('#capOut').hidden = false;
+  const tb = $('#hTable tbody'); tb.innerHTML = '';
+  for (const r of rows) {
+    const tr = document.createElement('tr'); tr.dataset.key = r.key; tr.tabIndex = 0;
+    const label = r.uuid ? short(r.uuid) + (nameOf(r.uuid) ? ' · ' + nameOf(r.uuid) : '') : (r.key.startsWith('RFCOMM') ? 'Bluetooth Classic serial' : 'not in capture');
+    for (const [v, cls] of [[r.key], [label], [r.outN, 'num'], [fmtB(r.outB), 'num'], [r.inN, 'num'], [fmtB(r.inB), 'num']]) { const td = document.createElement('td'); td.textContent = v; if (cls) td.className = cls; tr.append(td); }
+    const pick = () => selectCapKey(r.key);
+    tr.addEventListener('click', pick); tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+    tb.append(tr);
+  }
+  // Prefer the channel that carries a raster image, then Bluetooth Classic serial, then the busiest.
+  const hasRaster = key => { const st = concat(cap.events.filter(e => e.key === key && isWrite(e)).map(e => e.value)); for (let i = 0; i + 2 < st.length; i++) if (st[i] === 0x1d && st[i + 1] === 0x76 && st[i + 2] === 0x30) return true; return false; };
+  const first = rows.find(r => r.outB > 0 && hasRaster(r.key)) || rows.find(r => r.outB > 0 && r.key.startsWith('RFCOMM')) || rows.find(r => r.outB > 0) || rows[0];
+  selectCapKey(first.key);
+}
+function selectCapKey(key) {
+  capSel = key;
+  $('#bfOff').value = 0;
+  $$('#hTable tbody tr').forEach(tr => tr.classList.toggle('sel', tr.dataset.key === key));
+  const evs = cap.events.filter(e => e.key === key);
+  const outs = evs.filter(isWrite);
+  capStream = concat(outs.map(e => e.value));
+  // facts
+  const facts = [], st = capStream;
+  if (key.startsWith('RFCOMM')) {
+    facts.push('This is a Bluetooth Classic serial channel (RFCOMM). Chrome reaches it through Web Serial, so use Connect printer on the Printer tab.');
+    const looked = [...cap.sdp], custom = looked.filter(u => !u.endsWith(BASE)), other = looked.filter(u => u.endsWith(BASE) && u !== SPP).length;
+    if (!looked.length) facts.push('The capture has no service lookup for this printer, so its serial service ID is unknown. Capture again after turning Bluetooth off and on, so the Kodak app has to look it up.');
+    else {
+      const parts = [];
+      if (looked.includes(SPP)) parts.push('the standard serial port (0x1101)');
+      for (const u of custom) parts.push(u);
+      if (other) parts.push(`${other} standard service(s) such as audio, likely other devices`);
+      facts.push(`Before connecting, the phone looked up: ${parts.join('; ')}.`);
+      if (custom.length === 1) {
+        if (D.serialService !== custom[0]) { D.serialService = custom[0]; save(); fill(); }
+        facts.push('The printer uses its own serial service ID. It is now filled in on the Printer tab, so Chrome will list the printer when you tap Connect printer.');
+      } else if (looked.includes(SPP) && !custom.length) facts.push('The printer uses the standard serial port, so Chrome should list it once it is paired in Android’s Bluetooth settings.');
+    }
+  }
+  const gs = new Map(); let gsAt = -1;
+  for (let i = 0; i + 8 <= st.length; i++) if (st[i] === 0x1d && st[i + 1] === 0x76 && st[i + 2] === 0x30) { if (gsAt < 0) gsAt = i; const x = st[i + 4] | st[i + 5] << 8, y = st[i + 6] | st[i + 7] << 8; const k = `${x}×${y}`; gs.set(k, (gs.get(k) || 0) + 1); }
+  capJob = null;
+  if (gs.size) {
+    const [k, n] = [...gs.entries()].sort((a, b) => b[1] - a[1])[0]; const [x, y] = k.split('×').map(Number);
+    facts.push(`ESC/POS raster command (GS v 0) found ${[...gs.values()].reduce((a, b) => a + b, 0)} time(s), mostly ${x} bytes per line × ${y} lines (${n}×): ${x * 8} dots across the head and ${(y / DPMM).toFixed(1)} mm of label at 203 dpi. It starts at byte ${gsAt}.`);
+    $('#bfBpl').value = x; $('#bfOff').value = gsAt + 8;
+    // The bytes around the first image are the app's job framing: setup before, end-of-job after.
+    const fx = st[gsAt + 4] | st[gsAt + 5] << 8, fy = st[gsAt + 6] | st[gsAt + 7] << 8, end = gsAt + 8 + fx * fy;
+    let next = -1; for (let i = end; i + 2 < st.length; i++) if (st[i] === 0x1d && st[i + 1] === 0x76 && st[i + 2] === 0x30) { next = i; break; }
+    const pre = st.slice(0, gsAt), post = st.slice(Math.min(end, st.length), next < 0 ? st.length : Math.max(end, next - gsAt));
+    capJob = { pre, post, x: fx, y: fy };
+    facts.push(`Before the image the app sends ${pre.length} bytes: ${hex(pre, 96) || 'nothing'}.`);
+    facts.push(`After the image it sends ${post.length} bytes: ${hex(post, 96) || 'nothing'}.`);
+  }
+  $('#btnUseJob').disabled = !capJob;
+  const marks = [[[0x1b, 0x40], 'ESC @ (printer reset)'], [[0x1f, 0x11], '1f 11 (Phomemo-style command)'], [[0x51, 0x78], '51 78 (cat-printer packet)'], [[0x55, 0x55], '55 55 (Niimbot packet)'], [[0x1b, 0x4a], 'ESC J (feed)'], [[0x1b, 0x2a], 'ESC * (bit image)']];
+  for (const [seqB, name] of marks) { let n = 0; for (let i = 0; i + 1 < st.length; i++) if (st[i] === seqB[0] && st[i + 1] === seqB[1]) n++; if (n) facts.push(`${name}: ${n} occurrence(s). Coincidences happen inside image data, so treat low counts with care.`); }
+  if (outs.length) {
+    const heads = new Map(), sizes = new Map();
+    for (const e of outs) { const h = hex(e.value.subarray(0, Math.min(4, e.value.length))); heads.set(h, (heads.get(h) || 0) + 1); sizes.set(e.value.length, (sizes.get(e.value.length) || 0) + 1); }
+    const top = (m, k) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, k);
+    facts.push(`${outs.length} packets sent, ${fmtB(st.length)} in total. Most common sizes: ${top(sizes, 3).map(([s, n]) => `${s} bytes ×${n}`).join(', ')}.`);
+    facts.push(`Most common packet starts: ${top(heads, 4).map(([h, n]) => `${h} ×${n}`).join(' · ')}.`);
+  }
+  const ul = $('#facts'); ul.innerHTML = '';
+  for (const f of facts) { const li = document.createElement('li'); li.textContent = f; ul.append(li); }
+  // traffic
+  const lg = $('#capLog'); lg.innerHTML = '';
+  for (const e of evs.slice(0, 500)) { const d = document.createElement('div'); d.className = e.dir === 'in' ? 'rx' : ''; d.textContent = fmtEv(e, 48); lg.append(d); }
+  if (evs.length > 500) { const d = document.createElement('div'); d.className = 'info'; d.textContent = `… ${evs.length - 500} more. Copy the summary to see the end.`; lg.append(d); }
+  drawBitmap();
+}
+const fmtEv = (e, n) => `+${e.t.toFixed(1).padStart(8)} ms ${e.dir === 'out' ? '→' : '←'} ${e.op.padEnd(13)} ${e.key} (${e.value.length}) ${hex(e.value, n)}`;
+function drawBitmap() {
+  if (!cap || !capSel) return;
+  const skipPkt = Math.max(0, +$('#bfPkt').value || 0);
+  const st = skipPkt ? concat(cap.events.filter(e => e.key === capSel && isWrite(e)).map(e => e.value.subarray(Math.min(skipPkt, e.value.length)))) : capStream;
+  const bpl = Math.max(1, Math.min(256, +$('#bfBpl').value || 12)), off = Math.max(0, Math.min(st.length, +$('#bfOff').value || 0));
+  const rows = Math.max(1, Math.min(4000, Math.floor((st.length - off) / bpl))), w = bpl * 8, inv = $('#bfInv').checked;
+  const cv = $('#bfCanvas'); cv.width = w; cv.height = rows;
+  const ctx = cv.getContext('2d'), id = ctx.createImageData(w, rows), P = rgb(token('--paper')), K = rgb(token('--dot'));
+  for (let y = 0; y < rows; y++) for (let x = 0; x < w; x++) {
+    const b = st[off + y * bpl + (x >> 3)]; let on = b === undefined ? 0 : (b >> (7 - (x & 7))) & 1; if (inv) on ^= 1;
+    const c = on ? K : P, j = (y * w + x) * 4; id.data[j] = c[0]; id.data[j + 1] = c[1]; id.data[j + 2] = c[2]; id.data[j + 3] = 255;
+  }
+  ctx.putImageData(id, 0, 0);
+  cv.style.width = Math.min(w * 3, 900) + 'px';
+  $('#bfInfo').textContent = `${rows} lines × ${w} dots from ${fmtB(st.length)}${Math.floor((st.length - off) / bpl) > 4000 ? ' (first 4000 lines shown)' : ''}.`;
+}
+/* Summary covers the selected channel only, with its full bytes. Other channels are listed by size alone,
+   because a phone capture also records watches, earbuds and anything else that was connected. */
+function capSummary() {
+  const sel = capSel, rows = capRows(), me = rows.find(r => r.key === sel);
+  const L = ['Capture summary from M50 Label Bench (selected channel only)', `File: ${cap.fileName}`, `Format: ${cap.format}`, `Packets in file: ${cap.recCount}${cap.mtu ? `, MTU ${cap.mtu}` : ''}`];
+  L.push(`Selected channel: ${sel}${me && me.uuid ? ' ' + me.uuid : ''}, sent ${me ? me.outN : 0} pkts/${me ? me.outB : 0} B, received ${me ? me.inN : 0} pkts/${me ? me.inB : 0} B`);
+  if (sel.startsWith('0x')) { const h = parseInt(sel, 16), svc = cap.services.find(s => h >= s.start && h <= s.end); if (svc) L.push(`  in service ${svc.uuid}`); const c = cap.chars.get(h); if (c) L.push(`  properties: ${propStr(c.props)}`); }
+  const others = rows.filter(r => r.key !== sel);
+  if (others.length) L.push(`Other channels in the file (contents left out): ${others.map(r => `${r.key} ${r.outN + r.inN} pkts`).join(', ')}`);
+  L.push('Notes:'); for (const li of $$('#facts li')) L.push('  ' + li.textContent);
+  const evs = cap.events.filter(e => e.key === sel);
+  const total = evs.reduce((a, e) => a + e.value.length, 0), full = total <= 48 * 1024;
+  L.push(`Traffic on ${sel} (${evs.length} operations, ${full ? 'every byte' : 'long packets shortened to their first 96 and last 32 bytes'}):`);
+  for (const e of evs) {
+    const v = e.value;
+    const body = full || v.length <= 160 ? hex(v) : `${hex(v.subarray(0, 96))} … [${v.length - 128} bytes] … ${hex(v.subarray(v.length - 32))}`;
+    L.push(`+${e.t.toFixed(1).padStart(9)} ms ${e.dir === 'out' ? '→' : '←'} ${e.op} (${v.length}) ${body}`);
+  }
+  return L.join('\n');
+}
+async function replay() {
+  const msg = (t, tone) => { const el = $('#replayMsg'); el.textContent = t; el.dataset.tone = tone || ''; el.hidden = !t; };
+  if (!cap) return;
+  if (!conn) { msg('Connect the printer on the Printer tab first.', 'warn'); return; }
+  if (capSel.startsWith('RFCOMM') && conn.kind !== 'serial') { msg('This capture is Bluetooth Classic. Disconnect and use Connect printer on the Printer tab.', 'warn'); return; }
+  // Only the selected channel is replayed, so traffic from other devices in the capture never reaches the printer.
+  const evs = cap.events.filter(e => e.key === capSel && e.dir === 'out' && (e.op === 'write-cmd' || e.op === 'write-req' || e.op === 'rfcomm'));
+  let sent = 0, skipped = 0, prevT = null;
+  if (printing) { msg('A print is still in progress.', 'warn'); return; }
+  printing = true; // pauses the background status checks
+  msg('Replaying…', '');
+  try {
+    for (const e of evs) {
+      let target = null;
+      if (e.op === 'rfcomm') { if (conn.kind !== 'serial') { skipped++; continue; } }
+      else {
+        if (conn.kind !== 'ble') { skipped++; continue; }
+        const u = capUuid(cap, e);
+        if (u === full16(0x2902) || (!u && e.op === 'write-req' && e.value.length === 2 && e.value[1] === 0 && e.value[0] <= 2)) { skipped++; continue; }
+        target = (u && conn.chars.find(c => c.uuid === u)) || (e.key === capSel ? conn.tx : null);
+        if (!target) { skipped++; continue; }
+      }
+      if (prevT !== null) await sleep(Math.min(400, Math.max(3, e.t - prevT)));
+      prevT = e.t;
+      const v = e.value.slice();
+      if (target) {
+        try { if (e.op === 'write-req' || !target.props.writeWithoutResponse) await target.ch.writeValueWithResponse(v); else await target.ch.writeValueWithoutResponse(v); }
+        catch { await target.ch.writeValue(v); }
+      } else await conn.writer.write(v);
+      sent++;
+      if (sent % 25 === 0) msg(`Replaying… ${sent} of ${evs.length} packets`, '');
+    }
+    msg(`Replayed ${sent} packets${skipped ? `, skipped ${skipped} that had no matching characteristic` : ''}. If the label printed, the transport works and the protocol is in this capture.`, 'ok');
+    logLine('info', `Replayed capture: ${sent} packets, ${skipped} skipped.`);
+  } catch (e) { msg(`Replay stopped after ${sent} packets: ${e.message}`, 'bad'); }
+  finally { printing = false; }
+}
+
+/* ---------- tabs, dialogs, copy ---------- */
+function selectTab(id) {
+  $$('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === id)));
+  $$('.panel').forEach(p => { p.hidden = p.id !== 'tab-' + id; });
+  P.tab = id; savePrefs();
+  if (id === 'saved') renderSaved();
+}
+$$('.tab').forEach(t => t.addEventListener('click', () => selectTab(t.dataset.tab)));
+$$('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+async function copyText(text, title) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch { $('#copyTitle').textContent = title; const ta = $('#copyText'); ta.value = text; $('#copyDlg').showModal(); ta.focus(); ta.select(); return false; }
+}
+$('#btnCapCopy').addEventListener('click', async e => { if (!cap) return; const b = e.currentTarget; if (await copyText(capSummary(), 'Capture summary')) { b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy summary for Claude', 1600); } });
+$('#btnReplay').addEventListener('click', async () => { if (!conn) { try { await ensurePhone(true); } catch (e) { stageMsg(e.message, 'bad', 7000); return; } } replay(); });
+$('#btnUseJob').addEventListener('click', () => {
+  if (!capJob) return;
+  Object.assign(D, { preset: 'custom', prefix: hex(capJob.pre), body: 'gsv0', band: 0, suffix: hex(capJob.post), headDots: capJob.x * 8 });
+  savePrefs(); fillPrefs(); afterDocChange();
+  const el = $('#replayMsg'); el.textContent = `Print protocol now sends the app’s ${capJob.pre.length} setup bytes and ${capJob.post.length} end bytes.`; el.dataset.tone = 'ok'; el.hidden = false;
+});
+$('#capFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  try { cap = decodeCapture(await f.arrayBuffer()); cap.fileName = f.name; $('#bfOff').value = 0; $('#bfPkt').value = 0; $('#replayMsg').hidden = true; renderCapture(); }
+  catch (err) { cap = null; $('#capOut').hidden = true; capStatus(`${f.name}: ${err.message}`, 'bad'); }
+});
+for (const id of ['#bfBpl', '#bfOff', '#bfPkt', '#bfInv']) $(id).addEventListener('input', drawBitmap);
+
+/* ---------- start ---------- */
+$('#pageVer').textContent = PAGE_VERSION;
+fillPrefs();
+selectTab(['design', 'saved', 'printer'].includes(location.hash.slice(1)) ? location.hash.slice(1) : (['design', 'saved', 'printer'].includes(P.tab) ? P.tab : 'design'));
+let restored = false;
+try {
+  const dr = JSON.parse(localStorage.getItem('labelbench.draft') || 'null');
+  if (dr && dr.design && Array.isArray(dr.design.items)) { loadDesign(dr.design, dr.savedId || null); restored = true; }
+} catch {}
+if (!restored) { doc.items = TEMPLATES[0].make(); doc.items[0].text = `Soup 🍲\nmade ${todayStr().replace(/ \d{4}$/, '')}`; selId = doc.items[0].id; afterDocChange(); commit(); }
+syncUndo();
+logLine('info', `Console ready (page ${PAGE_VERSION}).`);
+renderRoute();
+detectBridge(true);
+window.addEventListener('resize', sizePreview);
+const redraw = () => { if (last) drawPreview(last); if (typeof cap !== 'undefined' && cap) drawBitmap(); };
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw); } catch {}
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (document.fonts) { document.fonts.ready.then(() => { fitCache.clear(); scheduleRender(); }); document.fonts.addEventListener && document.fonts.addEventListener('loadingdone', () => { fitCache.clear(); scheduleRender(); }); }
+if (navigator.serial && navigator.serial.addEventListener) navigator.serial.addEventListener('disconnect', e => { if (conn && e.target === conn.port) disconnectPhone('The printer disconnected.'); });
+})();
+</script>
+
+</html>

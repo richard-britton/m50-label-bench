@@ -1,0 +1,18 @@
+# Dashboard card: paste into a dashboard with "Add card" > "Manual".
+# "Label designer" opens the full page in the browser; "Quick label" asks for text and prints it.
+type: grid
+columns: 2
+square: false
+cards:
+  - type: button
+    name: Label designer
+    icon: mdi:label-variant-outline
+    tap_action:
+      action: url
+      url_path: https://labels.example.com   # where you serve the designer
+  - type: button
+    name: Quick label
+    icon: mdi:printer-outline
+    entity: script.print_label
+    tap_action:
+      action: more-info

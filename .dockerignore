@@ -1,0 +1,10 @@
+.git
+.github
+.env
+data
+docs
+examples
+homeassistant
+tests
+__pycache__
+*.md

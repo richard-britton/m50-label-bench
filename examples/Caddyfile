@@ -1,0 +1,12 @@
+# Caddy: HTTPS, a login, and the bridge's access token added on the way through.
+# Run Caddy with LABEL_BRIDGE_TOKEN in its environment (the same value as the bridge's .env),
+# and replace the host name, the password hash and the bridge address.
+labels.example.com {
+	basic_auth {
+		# make the hash with: caddy hash-password
+		labels $2a$14$replace.with.your.own.hash
+	}
+	reverse_proxy 192.168.1.10:8091 {
+		header_up X-Label-Token {env.LABEL_BRIDGE_TOKEN}
+	}
+}
